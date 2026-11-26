@@ -11,6 +11,7 @@ import {
   applyFmTraining,
   fmTrainingQueryOptions,
   setDevelopmentMaxAge,
+  setDevelopmentPositionFamiliarity,
   setDevelopmentSlot,
   setTrainingBasis,
   trainingKeys,
@@ -127,6 +128,7 @@ function groupPlayers(listed: readonly FmTrainingPlayer[]) {
 type DevelopmentChange =
   | { basis: TrainingBasis }
   | { maxAge: number }
+  | { positionFamiliarity: boolean }
   | { playerUid: number; laneId: string | null };
 
 function changeDevelopment(change: DevelopmentChange) {
@@ -135,6 +137,9 @@ function changeDevelopment(change: DevelopmentChange) {
   }
   if ("maxAge" in change) {
     return setDevelopmentMaxAge(change.maxAge);
+  }
+  if ("positionFamiliarity" in change) {
+    return setDevelopmentPositionFamiliarity(change.positionFamiliarity);
   }
   return setDevelopmentSlot(change.playerUid, change.laneId);
 }
@@ -207,6 +212,8 @@ export function TrainingWorkspace({
   ).length;
   const awayCount = planned.filter(trainsAwayFromSlot).length;
   const changing = develop.isPending || apply.isPending;
+  // A control shows its new value at once, while the plan that follows it loads.
+  const pending = develop.isPending ? develop.variables : undefined;
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -316,11 +323,19 @@ export function TrainingWorkspace({
         <>
           <div className="shrink-0 px-4 pb-3">
             <TrainForControl
-              basis={basis}
-              maxAge={maxAge}
+              basis={pending && "basis" in pending ? pending.basis : basis}
+              maxAge={pending && "maxAge" in pending ? pending.maxAge : maxAge}
+              positionFamiliarity={
+                pending && "positionFamiliarity" in pending
+                  ? pending.positionFamiliarity
+                  : (plan.data?.developmentPositionFamiliarity ?? true)
+              }
               disabled={disabled || changing}
               onBasisChange={(next) => develop.mutate({ basis: next })}
               onMaxAgeChange={(next) => develop.mutate({ maxAge: next })}
+              onPositionFamiliarityChange={(next) =>
+                develop.mutate({ positionFamiliarity: next })
+              }
             />
           </div>
           {basis === "development" ? (

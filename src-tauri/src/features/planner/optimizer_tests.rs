@@ -6,7 +6,7 @@ use super::depth::{
     assign_player, clear_all, get_depth, set_assignment_pinned, PlannerDepth, PlannerTeam,
     StarterComparison,
 };
-use super::development::{choose_slot, set_optimize_for, OptimizeFor};
+use super::development::{choose_slot, set_optimize_for, set_position_familiarity, OptimizeFor};
 use super::fit::PositionRule;
 use super::optimizer::{
     self, allocate_rotation, match_lanes, unassigned_players, OptimizerCandidate,
@@ -1216,6 +1216,43 @@ fn optimizing_for_development_keeps_a_young_player_in_his_development_slot() {
             .expect("read the board")
             .starter_comparison,
         None
+    );
+}
+
+#[test]
+fn a_development_slot_suggested_in_any_position_places_a_player_he_is_to_learn() {
+    let (_temp_dir, conn, save_id) = winger_developing_into_a_striker(&[204]);
+    // He has a striker's scores but can no longer play up front.
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 18, "MR": 18}"#);
+    set_optimize_for(&conn, save_id, OptimizeFor::Development).expect("optimize for development");
+
+    // By position he develops on the wing, where he starts.
+    let by_position = optimize_depth(&conn, save_id).expect("optimize for development");
+    assert_eq!(
+        lane_players(&by_position, PlannerTeam::Senior, "right_winger")[0],
+        Some(77)
+    );
+
+    // Suggested on role scores alone, he is growing into a striker, and Optimize puts him
+    // behind the striker although it places everyone else by position.
+    set_position_familiarity(&conn, save_id, false).expect("suggest in any position");
+    let anywhere = optimize_depth(&conn, save_id).expect("optimize for development");
+    assert_eq!(
+        lane_players(&anywhere, PlannerTeam::Senior, "centre_forward")[..2],
+        [Some(204), Some(77)]
+    );
+    assert_eq!(
+        lane_players(&anywhere, PlannerTeam::Senior, "right_winger")[0],
+        Some(201)
+    );
+    let backup = &team_strings(&anywhere, PlannerTeam::Senior)[1];
+    assert!(
+        backup
+            .assignments
+            .iter()
+            .find(|assignment| assignment.player_uid == 77)
+            .expect("77 is placed")
+            .out_of_position
     );
 }
 

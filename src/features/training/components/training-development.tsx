@@ -1,4 +1,5 @@
 import { Lock } from "lucide-react";
+import { useId } from "react";
 import { fieldClasses } from "@/components/ui/field/field-styles";
 import { cn } from "@/utils/cn";
 import type {
@@ -12,6 +13,19 @@ export function placement(lane: { ipPosition: string; oopPosition: string }) {
   return lane.ipPosition === lane.oopPosition
     ? lane.ipPosition
     : `${lane.ipPosition}/${lane.oopPosition}`;
+}
+
+/**
+ * A slot as the Develops as column names it: its placement and the role the
+ * tactic has there in possession, such as "STC · Channel Forward". The slot's
+ * out-of-possession role is trained with it.
+ */
+function slotName(option: {
+  ipPosition: string;
+  oopPosition: string;
+  inPossessionRole: string;
+}) {
+  return `${placement(option)} · ${option.inPossessionRole}`;
 }
 
 /** One slot to grow into: the tactic's slots that train the same. */
@@ -69,49 +83,61 @@ const BASES: readonly { basis: TrainingBasis; label: string }[] = [
 // From the youngest limit a save can set to the last age with growth left.
 const MAX_AGES = Array.from({ length: 14 }, (_, index) => 15 + index);
 
-/** What training follows, and up to what age a player trains for his future. */
+/**
+ * What training follows, and how a development slot is found: up to what age
+ * a player has one, and whether his positions count. The last two also decide
+ * what the Planner optimizes for development, so they show whatever training
+ * follows.
+ */
 export function TrainForControl({
   basis,
   maxAge,
+  positionFamiliarity,
   disabled,
   onBasisChange,
   onMaxAgeChange,
+  onPositionFamiliarityChange,
 }: {
   basis: TrainingBasis;
   maxAge: number;
+  positionFamiliarity: boolean;
   disabled: boolean;
   onBasisChange: (basis: TrainingBasis) => void;
   onMaxAgeChange: (maxAge: number) => void;
+  onPositionFamiliarityChange: (positionFamiliarity: boolean) => void;
 }) {
+  const hintId = useId();
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-      <div className="flex items-center gap-2">
-        <span className="text-label-md text-on-surface-variant">Train for</span>
-        <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
-          <legend className="sr-only">Train for</legend>
-          {BASES.map((option) => (
-            <button
-              key={option.basis}
-              type="button"
-              aria-pressed={basis === option.basis}
-              disabled={disabled}
-              className={
-                basis === option.basis
-                  ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary"
-                  : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface disabled:hover:text-on-surface-variant"
-              }
-              onClick={() => {
-                if (basis !== option.basis) {
-                  onBasisChange(option.basis);
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-label-md text-on-surface-variant">
+            Train for
+          </span>
+          <fieldset className="inline-flex rounded-md border border-outline bg-surface-container-high p-0.5">
+            <legend className="sr-only">Train for</legend>
+            {BASES.map((option) => (
+              <button
+                key={option.basis}
+                type="button"
+                aria-pressed={basis === option.basis}
+                disabled={disabled}
+                className={
+                  basis === option.basis
+                    ? "h-8 rounded-sm bg-primary px-3 text-label-md text-on-primary"
+                    : "h-8 rounded-sm px-3 text-label-md text-on-surface-variant hover:text-on-surface disabled:hover:text-on-surface-variant"
                 }
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </fieldset>
-      </div>
-      {basis === "development" ? (
+                onClick={() => {
+                  if (basis !== option.basis) {
+                    onBasisChange(option.basis);
+                  }
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </fieldset>
+        </div>
         <label className="flex items-center gap-2 text-label-md text-on-surface-variant">
           Develop players aged up to
           <select
@@ -127,7 +153,32 @@ export function TrainForControl({
             ))}
           </select>
         </label>
-      ) : null}
+      </div>
+      {/* The Planner's familiarity option, for development slots. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <label
+          className={cn(
+            "flex items-center gap-2 text-body-md",
+            disabled ? "text-on-surface-variant" : "text-on-surface",
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={positionFamiliarity}
+            disabled={disabled}
+            aria-describedby={hintId}
+            onChange={(event) =>
+              onPositionFamiliarityChange(event.target.checked)
+            }
+          />
+          Position familiarity
+        </label>
+        <span id={hintId} className="text-body-sm text-on-surface-variant">
+          {positionFamiliarity
+            ? "A development slot is suggested only among the positions a player can play."
+            : "A development slot is suggested in any position, by role scores and preferred foot alone. Goalkeepers and outfield players never swap."}
+        </span>
+      </div>
     </div>
   );
 }
@@ -273,9 +324,7 @@ export function DevelopsAsCell({
     return (
       <>
         <span className="flex items-center gap-2 text-on-surface-variant">
-          <span className="font-mono text-mono-sm">
-            {chosen ? placement(chosen) : "No slot"}
-          </span>
+          <span>{chosen ? slotName(chosen) : "No slot"}</span>
           {chosen ? (
             <Scores
               current={chosen.currentScore}
@@ -288,23 +337,21 @@ export function DevelopsAsCell({
     );
   }
 
-  const playable = development.options.filter(
-    (option) => option.potentialTopPercent !== null,
-  );
-  const learnable = development.options.filter(
-    (option) => option.potentialTopPercent === null,
-  );
+  const playable = development.options.filter((option) => option.playable);
+  const learnable = development.options.filter((option) => !option.playable);
   const optionLabel = (option: (typeof development.options)[number]) =>
     option.laneId === development.suggestedLaneId
-      ? `${placement(option)} · suggested`
-      : placement(option);
+      ? `${slotName(option)} · suggested`
+      : slotName(option);
   return (
     <>
       <span className="flex items-center gap-2">
         <select
           aria-label={`Development slot for ${player.name}`}
           // Smaller than a form field, to sit in a table row.
-          className="h-7 rounded-sm border border-outline bg-surface-container-high px-1.5 font-mono text-mono-sm text-on-surface hover:border-on-surface-variant focus-visible:outline-offset-0 disabled:cursor-not-allowed disabled:opacity-45"
+          // The list shows each name in full; the closed box may cut the
+          // suggested mark off a long one, which the line below still says.
+          className="h-7 max-w-56 rounded-sm border border-outline bg-surface-container-high px-1.5 text-body-sm text-on-surface hover:border-on-surface-variant focus-visible:outline-offset-0 disabled:cursor-not-allowed disabled:opacity-45"
           value={development.laneId ?? ""}
           disabled={disabled}
           onChange={(event) =>
@@ -367,12 +414,14 @@ export function DevelopsAsCell({
         ) : chosen ? (
           [
             chosen.potentialTopPercent === null
-              ? "A position to learn"
+              ? null
               : `Top ${chosen.potentialTopPercent}% at potential`,
+            chosen.playable ? null : "a position to learn",
             sameAsSlot ? "same as his slot" : null,
           ]
             .filter((part) => part !== null)
             .join(" · ")
+            .replace(/^a /, "A ")
         ) : (
           "He can play no slot yet; choose one to learn"
         )}

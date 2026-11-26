@@ -48,11 +48,19 @@ export type FmTrainingDevelopmentOption = {
   laneId: string;
   ipPosition: string;
   oopPosition: string;
+  /**
+   * The slot's in-possession role, which names the slot beside its position.
+   * He trains its out-of-possession role too.
+   */
+  inPossessionRole: string;
   currentScore: number;
   potentialScore: number;
+  /** Whether he can play the slot's positions today. */
+  playable: boolean;
   /**
    * Where his potential stands among the slot's players in the save, as a top
-   * percentage from 1 to 100; null for a slot he cannot play yet.
+   * percentage from 1 to 100; null for a slot the save's position rule does
+   * not rank him in.
    */
   potentialTopPercent: number | null;
 };
@@ -64,7 +72,7 @@ export type FmTrainingDevelopment = {
   suggestedLaneId: string | null;
   /** Whether the user chose his development slot. */
   locked: boolean;
-  /** The slots he can play, best potential first, then positions to learn. */
+  /** The slots he is ranked in, best potential first, then the others. */
   options: FmTrainingDevelopmentOption[];
 };
 
@@ -107,6 +115,11 @@ export type FmTraining = {
   basis: TrainingBasis;
   /** The oldest age at which a player still counts as developing. */
   developmentMaxAge: number;
+  /**
+   * Whether development slots are suggested only among the positions a player
+   * can play, or in any position on his role scores and preferred foot alone.
+   */
+  developmentPositionFamiliarity: boolean;
   lanes: FmTrainingLane[];
 };
 

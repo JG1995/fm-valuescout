@@ -55,16 +55,20 @@ const wing = {
   laneId: "right_winger",
   ipPosition: "AMR",
   oopPosition: "MR",
+  inPossessionRole: "Inside Forward",
   currentScore: 70,
   potentialScore: 75,
+  playable: true,
   potentialTopPercent: 40,
 };
 const striker = {
   laneId: "centre_forward",
   ipPosition: "STC",
   oopPosition: "STC",
+  inPossessionRole: "Centre Forward",
   currentScore: 60,
   potentialScore: 85,
+  playable: true,
   potentialTopPercent: 3,
 };
 
@@ -132,8 +136,10 @@ const winger: FmTrainingPlayer = {
         laneId: "left_centre_back",
         ipPosition: "DCL",
         oopPosition: "DCL",
+        inPossessionRole: "Centre-Back",
         currentScore: 40,
         potentialScore: 55,
+        playable: false,
         potentialTopPercent: null,
       },
     ],
@@ -174,8 +180,10 @@ const stopper: FmTrainingPlayer = {
         laneId: "right_centre_back",
         ipPosition: "DCR",
         oopPosition: "DCR",
+        inPossessionRole: "Centre-Back",
         currentScore: 55,
         potentialScore: 80,
+        playable: true,
         potentialTopPercent: 10,
       },
     ],
@@ -208,6 +216,7 @@ const plan: FmTraining = {
   unavailableReason: null,
   basis: "planner",
   developmentMaxAge: 23,
+  developmentPositionFamiliarity: true,
   lanes,
 };
 
@@ -272,6 +281,7 @@ function renderTraining(
     if (
       cmd === "set_training_basis" ||
       cmd === "set_development_max_age" ||
+      cmd === "set_development_position_familiarity" ||
       cmd === "set_development_slot"
     ) {
       changes.push({ cmd, args });
@@ -323,12 +333,17 @@ describe("Training workspace", () => {
       "Veteran Keeper · 31GKOver 23Trains the slot he playsGoalkeeper GKLine-Holding KeeperCleared",
     );
     const prospect = await row("Unplaced Prospect");
-    expect(prospect).toHaveTextContent("Unplaced Prospect · 19No slotAMR/MR58");
+    // His development slot is named by its position and the tactic's role.
+    expect(prospect).toHaveTextContent(
+      "Unplaced Prospect · 19No slotAMR/MR · Inside Forward58",
+    );
     // By Planner slot, his development slot is shown but not trained.
     expect(prospect).toHaveTextContent(
       "Not used: training follows the Planner slotUnchangedUnchangedQuickness",
     );
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: /Development slot for/ }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Developing towards")).not.toBeInTheDocument();
     const groups = [
       "Senior · Starter",
@@ -475,7 +490,11 @@ describe("Training workspace", () => {
       within(wingerRow)
         .getAllByRole("option")
         .map((option) => option.textContent),
-    ).toEqual(["STC · suggested", "AMR/MR", "DCL"]);
+    ).toEqual([
+      "STC · Centre Forward · suggested",
+      "AMR/MR · Inside Forward",
+      "DCL · Centre-Back",
+    ]);
     expect(wingerRow).toHaveTextContent("Top 3% at potential");
     // A player in no squad trains his development slot too, and is not away
     // from any slot.
@@ -555,6 +574,59 @@ describe("Training workspace", () => {
         args: { maxAge: 21 },
       }),
     );
+  });
+
+  it("suggests development slots in any position once familiarity is off", async () => {
+    const user = userEvent.setup();
+    // On role scores alone the stopper's potential stands out up front, a
+    // position he has yet to learn.
+    const anywhere: FmTraining = {
+      ...developmentPlan,
+      developmentPositionFamiliarity: false,
+      players: developmentPlan.players.map((player) =>
+        player.playerUid === 80 && player.development
+          ? {
+              ...player,
+              development: {
+                ...player.development,
+                laneId: "centre_forward",
+                suggestedLaneId: "centre_forward",
+                options: [
+                  { ...striker, playable: false, potentialTopPercent: 2 },
+                  ...player.development.options,
+                ],
+              },
+            }
+          : player,
+      ),
+    };
+    const { changes } = renderTraining(developmentPlan, null, anywhere);
+    const toggle = await screen.findByRole("checkbox", {
+      name: "Position familiarity",
+    });
+    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAccessibleDescription(
+      /only among the positions a player can play/,
+    );
+
+    await user.click(toggle);
+
+    await waitFor(() => expect(toggle).not.toBeChecked());
+    expect(toggle).toHaveAccessibleDescription(/in any position/);
+    expect(changes).toEqual([
+      {
+        cmd: "set_development_position_familiarity",
+        args: { positionFamiliarity: false },
+      },
+    ]);
+    const stopperRow = await row("Youth Stopper");
+    expect(stopperRow).toHaveTextContent(
+      "Top 2% at potential · a position to learn",
+    );
+    // He is ranked there, yet it stays listed as a position to learn.
+    expect(
+      within(stopperRow).getByRole("group", { name: "To learn" }),
+    ).toHaveTextContent("STC · Centre Forward · suggested");
   });
 
   it("keeps the development slot the user chooses, and returns to the suggestion", async () => {

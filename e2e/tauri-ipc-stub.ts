@@ -435,6 +435,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       // the slots the user chose in place of the suggested ones.
       let trainingBasis = "planner";
       let developmentMaxAge = 23;
+      let developmentPositionFamiliarity = true;
       let plannerOptimizeFor = "strongest";
       const developmentChoices = new Map();
       // Each slot: placements in and out of possession, the position its role is trained
@@ -568,9 +569,13 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                     laneId,
                     ipPosition: trainingSlots[laneId][0],
                     oopPosition: trainingSlots[laneId][1],
+                    inPossessionRole: trainingSlots[laneId][3],
                     currentScore,
                     potentialScore,
-                    potentialTopPercent: top,
+                    playable: top !== null,
+                    // In any position, a position to learn is ranked too.
+                    potentialTopPercent:
+                      top ?? (developmentPositionFamiliarity ? null : 50),
                   })),
                 },
           focus: growing.focus ?? null,
@@ -2644,6 +2649,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               unavailableReason: null,
               basis: trainingBasis,
               developmentMaxAge,
+              developmentPositionFamiliarity,
               lanes: Object.entries(trainingSlots).map(([laneId, slot]) => ({
                 laneId,
                 ipPosition: slot[0],
@@ -2663,6 +2669,11 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
 
           if (cmd === "set_development_max_age") {
             developmentMaxAge = Number(args?.maxAge);
+            return null;
+          }
+
+          if (cmd === "set_development_position_familiarity") {
+            developmentPositionFamiliarity = args?.positionFamiliarity === true;
             return null;
           }
 

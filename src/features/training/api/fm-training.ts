@@ -44,6 +44,18 @@ export function setDevelopmentMaxAge(maxAge: number) {
 }
 
 /**
+ * Sets whether development slots are suggested only among the positions a
+ * player can play, or in any position.
+ */
+export function setDevelopmentPositionFamiliarity(
+  positionFamiliarity: boolean,
+) {
+  return invokeCommand<null>("set_development_position_familiarity", {
+    positionFamiliarity,
+  });
+}
+
+/**
  * Gives a player a development slot in place of the suggested one; a null
  * lane returns him to the suggestion.
  */

@@ -81,21 +81,27 @@ pub(crate) struct DevelopmentSettings {
     pub(crate) optimize_for: OptimizeFor,
     /// The oldest age at which a player still counts as developing.
     pub(crate) max_age: i64,
+    /// Whether a development slot is suggested only among the lanes a player can play, or in
+    /// any lane on his role scores and foot alone, as Optimize places players under each rule.
+    pub(crate) position_rule: PositionRule,
 }
 
 pub(super) fn load_settings(
     conn: &Connection,
     save_id: i64,
 ) -> Result<DevelopmentSettings, String> {
-    let (training_basis, optimize_for, max_age) = conn
+    let (training_basis, optimize_for, max_age, position_familiarity) = conn
         .query_row(
-            "SELECT training_basis, optimize_for, development_max_age FROM saves WHERE id = ?1",
+            "SELECT training_basis, optimize_for, development_max_age,
+                    development_position_familiarity
+             FROM saves WHERE id = ?1",
             [save_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, i64>(2)?,
+                    row.get::<_, bool>(3)?,
                 ))
             },
         )
@@ -104,6 +110,11 @@ pub(super) fn load_settings(
         training_basis: TrainingBasis::parse(&training_basis)?,
         optimize_for: OptimizeFor::parse(&optimize_for)?,
         max_age,
+        position_rule: if position_familiarity {
+            PositionRule::Familiarity
+        } else {
+            PositionRule::AnyPosition
+        },
     })
 }
 
@@ -142,6 +153,19 @@ pub(super) fn set_max_age(conn: &Connection, save_id: i64, max_age: i64) -> Resu
     conn.execute(
         "UPDATE saves SET development_max_age = ?2 WHERE id = ?1",
         params![save_id, max_age],
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
+
+pub(super) fn set_position_familiarity(
+    conn: &Connection,
+    save_id: i64,
+    position_familiarity: bool,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE saves SET development_position_familiarity = ?2 WHERE id = ?1",
+        params![save_id, position_familiarity],
     )
     .map(|_| ())
     .map_err(|error| error.to_string())
@@ -209,22 +233,24 @@ pub(super) fn same_training(left: &TacticLane, right: &TacticLane) -> bool {
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct DevelopmentOption {
     pub(super) lane_index: usize,
-    /// His fit score in the slot now and at his potential. A slot he cannot play yet is scored
-    /// on his roles and foot alone.
+    /// His fit score in the slot now and at his potential, under the save's position rule. A
+    /// slot that rule does not rank him in is scored on his roles and foot alone.
     pub(super) current: u8,
     pub(super) potential: u8,
+    /// Whether he can play the slot's positions today.
+    pub(super) playable: bool,
     /// The share of the slot's players in the save whom his potential outranks; `None` for a
-    /// slot he cannot play yet.
+    /// slot the save's position rule does not rank him in.
     pub(super) potential_rank: Option<f64>,
 }
 
 /// Where a player aged up to the save's limit is growing.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct PlayerDevelopment {
-    /// One option for each set of lanes that train the same: the slots he can play, highest
+    /// One option for each set of lanes that train the same: the slots he is ranked in, highest
     /// potential rank first, then the others in the tactic's order.
     pub(super) options: Vec<DevelopmentOption>,
-    /// The option the app suggests; `None` when he can play no slot.
+    /// The option the app suggests; `None` when he is ranked in no slot.
     pub(super) suggested: Option<usize>,
     /// His development slot: the option he was given, otherwise the suggested one.
     pub(super) chosen: Option<usize>,
@@ -268,23 +294,27 @@ impl DevelopmentSlots {
     }
 }
 
-/// Works out where each managed-club player aged up to `max_age` is growing.
+/// Works out where each managed-club player aged up to the save's limit is growing.
 ///
-/// A player is suggested the lane where his potential ranks highest among the lanes he can
-/// play ([`PositionRule::Familiarity`], as Best role fit ranks him). He can be given any lane
-/// his foot and goalkeeping allow, for a position he is to learn. Of lanes that train the same
-/// he is offered the one the Planner has him in, otherwise the one he scores highest in.
+/// A player is suggested the lane where his potential ranks highest against the save. With
+/// position familiarity ([`PositionRule::Familiarity`]) that is among the lanes he can play,
+/// as Best role fit ranks him. Without it ([`PositionRule::AnyPosition`]) it is among every
+/// lane his foot and goalkeeping allow, on his role scores alone, as Optimize places players
+/// without position familiarity. Under either rule he can be given any lane his foot and
+/// goalkeeping allow, for a position he is to learn. Of lanes that train the same he is offered
+/// the one the Planner has him in, otherwise the one he scores highest in.
 ///
-/// `familiarity_rankings` gives the save's rankings under [`PositionRule::Familiarity`]; it is
-/// asked only when a player is young enough.
+/// `rankings` gives the save's rankings under the settings' position rule; it is asked only
+/// when a player is young enough.
 pub(super) fn load_development_slots(
     conn: &Connection,
     save_id: i64,
     snapshot_id: i64,
     tactic: &PlannerTactic,
-    max_age: i64,
-    familiarity_rankings: impl FnOnce() -> Result<Arc<SlotRankings>, String>,
+    settings: &DevelopmentSettings,
+    rankings: impl FnOnce() -> Result<Arc<SlotRankings>, String>,
 ) -> Result<DevelopmentSlots, String> {
+    let develops = |age: Option<i64>| age.is_some_and(|age| age <= settings.max_age);
     let playable = load_club_players(
         conn,
         save_id,
@@ -301,11 +331,11 @@ pub(super) fn load_development_slots(
     )?;
     if !playable
         .iter()
-        .any(|player| player.development.age.is_some_and(|age| age <= max_age))
+        .any(|player| develops(player.development.age))
     {
         return Ok(DevelopmentSlots::default());
     }
-    let rankings = familiarity_rankings()?;
+    let rankings = rankings()?;
     let lane_index = |lane_id: &str| tactic.lanes.iter().position(|lane| lane.lane_id == lane_id);
     let lane_by_player = |sql: &str| -> Result<HashMap<i64, usize>, String> {
         let mut statement = conn.prepare(sql).map_err(|error| error.to_string())?;
@@ -327,21 +357,25 @@ pub(super) fn load_development_slots(
     )?;
     let planner_lanes =
         lane_by_player("SELECT player_uid, lane_id FROM planner_assignments WHERE save_id = ?1")?;
+    let trains_as =
+        |left: usize, right: usize| same_training(&tactic.lanes[left], &tactic.lanes[right]);
 
     let mut players = HashMap::new();
     // Both reads list the club's players by UID.
     for (player, learner) in playable.iter().zip(&learnable) {
-        if !player.development.age.is_some_and(|age| age <= max_age) {
+        if !develops(player.development.age) {
             continue;
         }
+        // The scores the save's rule ranks him by: in the lanes he can play, or in every lane.
+        let ranked_scores = match settings.position_rule {
+            PositionRule::Familiarity => &player.lane_scores,
+            PositionRule::AnyPosition => &learner.lane_scores,
+        };
         let planner_lane = planner_lanes.get(&player.uid).copied();
         // The lane that stands for `lane_index` and the lanes that train the same.
         let representative = |lane_index: usize, scores: &[Option<(u8, u8)>]| {
             let twins = (0..tactic.lanes.len())
-                .filter(|&other| {
-                    scores[other].is_some()
-                        && same_training(&tactic.lanes[other], &tactic.lanes[lane_index])
-                })
+                .filter(|&other| scores[other].is_some() && trains_as(other, lane_index))
                 .collect::<Vec<_>>();
             planner_lane
                 .filter(|lane| twins.contains(lane))
@@ -355,15 +389,16 @@ pub(super) fn load_development_slots(
         };
 
         let mut options = Vec::<DevelopmentOption>::new();
-        for (scores, can_play) in [(&player.lane_scores, true), (&learner.lane_scores, false)] {
+        for (scores, ranked) in [(ranked_scores, true), (&learner.lane_scores, false)] {
             for lane_index in 0..tactic.lanes.len() {
                 if scores[lane_index].is_none() {
                     continue;
                 }
                 let lane_index = representative(lane_index, scores);
-                if options.iter().any(|option| {
-                    same_training(&tactic.lanes[option.lane_index], &tactic.lanes[lane_index])
-                }) {
+                if options
+                    .iter()
+                    .any(|option| trains_as(option.lane_index, lane_index))
+                {
                     continue;
                 }
                 let (current, potential) = scores[lane_index].expect("a scored lane");
@@ -371,13 +406,16 @@ pub(super) fn load_development_slots(
                     lane_index,
                     current,
                     potential,
-                    potential_rank: can_play
+                    playable: (0..tactic.lanes.len()).any(|other| {
+                        player.lane_scores[other].is_some() && trains_as(other, lane_index)
+                    }),
+                    potential_rank: ranked
                         .then(|| rankings.lane(lane_index).potential.rank(potential)),
                 });
             }
         }
-        // The lanes he can play come first, best potential rank first; the sort is stable, so
-        // the others keep the tactic's order.
+        // The lanes he is ranked in come first, best potential rank first; the sort is stable,
+        // so the others keep the tactic's order.
         options.sort_by(
             |left, right| match (left.potential_rank, right.potential_rank) {
                 (Some(left_rank), Some(right_rank)) => right_rank
@@ -390,13 +428,11 @@ pub(super) fn load_development_slots(
         let option_for = |lane_index: usize| {
             options
                 .iter()
-                .find(|option| {
-                    same_training(&tactic.lanes[option.lane_index], &tactic.lanes[lane_index])
-                })
+                .find(|option| trains_as(option.lane_index, lane_index))
                 .map(|option| option.lane_index)
         };
         let suggested = rankings
-            .development_lane(&player.lane_scores)
+            .development_lane(ranked_scores)
             .and_then(option_for);
         let given = chosen_lanes.get(&player.uid).copied().and_then(option_for);
         players.insert(
@@ -412,16 +448,16 @@ pub(super) fn load_development_slots(
     Ok(DevelopmentSlots { players })
 }
 
-/// [`load_development_slots`] with the rankings a reader keeps for its data generation.
+/// [`load_development_slots`] with the rankings readers keep.
 pub(super) fn development_slots(
     conn: &Connection,
     save_id: i64,
     snapshot_id: i64,
     tactic: &PlannerTactic,
-    max_age: i64,
+    settings: &DevelopmentSettings,
 ) -> Result<DevelopmentSlots, String> {
-    load_development_slots(conn, save_id, snapshot_id, tactic, max_age, || {
-        slot_rankings(conn, snapshot_id, tactic, PositionRule::Familiarity)
+    load_development_slots(conn, save_id, snapshot_id, tactic, settings, || {
+        slot_rankings(conn, snapshot_id, tactic, settings.position_rule)
     })
 }
 
@@ -437,6 +473,6 @@ pub(super) fn training_lanes(
     if settings.training_basis != TrainingBasis::Development {
         return Ok(HashMap::new());
     }
-    let slots = development_slots(conn, save_id, snapshot_id, tactic, settings.max_age)?;
+    let slots = development_slots(conn, save_id, snapshot_id, tactic, &settings)?;
     Ok(slots.lanes().collect())
 }

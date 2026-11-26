@@ -315,22 +315,24 @@ pub(super) fn optimize_depth(
     let has_development_teams = teams::get_team_settings(conn, save_id)?
         .iter()
         .any(|setting| setting.team != PlannerTeam::Senior);
-    // Development slots are suggested from the familiarity rankings, and the other squads place
-    // by the rankings of the rule in use. One read serves both when they are the same.
-    let familiarity_rankings = (develops
-        || (has_development_teams && position_rule == PositionRule::Familiarity))
-        .then(|| slot_rankings(conn, snapshot_id, &tactic, PositionRule::Familiarity))
+    // Development slots are suggested from the rankings of the save's own position rule, and
+    // the other squads place by those of the rule in use. One read serves both when the rules
+    // are the same.
+    let development_rankings = develops
+        .then(|| slot_rankings(conn, snapshot_id, &tactic, goal.position_rule))
         .transpose()?;
-    let development_slots = if develops {
-        load_development_slots(conn, save_id, snapshot_id, &tactic, goal.max_age, || {
-            Ok(Arc::clone(
-                familiarity_rankings
-                    .as_ref()
-                    .expect("ranked for development"),
-            ))
-        })?
-    } else {
-        development::DevelopmentSlots::default()
+    let placement_rankings = match &development_rankings {
+        _ if !has_development_teams => None,
+        Some(rankings) if goal.position_rule == position_rule => Some(Arc::clone(rankings)),
+        _ => Some(slot_rankings(conn, snapshot_id, &tactic, position_rule)?),
+    };
+    let development_slots = match &development_rankings {
+        Some(rankings) => {
+            load_development_slots(conn, save_id, snapshot_id, &tactic, &goal, || {
+                Ok(Arc::clone(rankings))
+            })?
+        }
+        None => development::DevelopmentSlots::default(),
     };
     let tx = conn
         .unchecked_transaction()
@@ -428,11 +430,7 @@ pub(super) fn optimize_depth(
         .iter()
         .filter(|setting| setting.team != PlannerTeam::Senior)
         .collect::<Vec<_>>();
-    if !development_settings.is_empty() {
-        let rankings = match (position_rule, &familiarity_rankings) {
-            (PositionRule::Familiarity, Some(rankings)) => Arc::clone(rankings),
-            _ => slot_rankings(&tx, snapshot_id, &tactic, position_rule)?,
-        };
+    if let Some(rankings) = placement_rankings.filter(|_| !development_settings.is_empty()) {
         for setting in &development_settings {
             let team = setting.team;
             let mut slots = vec![Vec::new(); tactic.lanes.len()];

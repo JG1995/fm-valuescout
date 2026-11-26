@@ -4,8 +4,9 @@ use super::commands::read_planner_development;
 use super::depth::{assign_player, get_depth, PlannerTeam};
 use super::development::{
     choose_slot, development_slots, load_settings, same_training, set_max_age, set_optimize_for,
-    set_training_basis, DevelopmentSlots, OptimizeFor, TrainingBasis,
+    set_position_familiarity, set_training_basis, DevelopmentSlots, OptimizeFor, TrainingBasis,
 };
+use super::fit::PositionRule;
 use super::tactic::{self, PlannerTactic};
 use super::test_support::{
     current_snapshot_id, open_with_snapshot, seed_players, set_lane_scores, set_player_age,
@@ -43,13 +44,13 @@ fn winger_who_will_be_a_striker() -> (tempfile::TempDir, Connection, i64) {
 }
 
 fn slots(conn: &Connection, save_id: i64, tactic: &PlannerTactic) -> DevelopmentSlots {
-    let max_age = load_settings(conn, save_id).expect("settings").max_age;
+    let settings = load_settings(conn, save_id).expect("settings");
     development_slots(
         conn,
         save_id,
         current_snapshot_id(conn, save_id),
         tactic,
-        max_age,
+        &settings,
     )
     .expect("development slots")
 }
@@ -114,6 +115,58 @@ fn a_player_is_suggested_the_slot_where_his_potential_stands_out() {
             ));
         }
     }
+}
+
+#[test]
+fn without_position_familiarity_a_slot_is_suggested_in_any_position() {
+    let (_temp_dir, conn, save_id) = winger_who_will_be_a_striker();
+    // He has a striker's scores but can no longer play up front.
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 18, "MR": 18}"#);
+    let tactic = tactic::get_tactic(&conn, save_id).expect("tactic");
+    let striker = lane_index(&tactic, "centre_forward");
+    let winger = lane_index(&tactic, "right_winger");
+    let option = |development: &super::development::PlayerDevelopment, lane_index: usize| {
+        development
+            .options
+            .iter()
+            .find(|option| option.lane_index == lane_index)
+            .map(|option| (option.playable, option.potential_rank))
+            .expect("an option for the lane")
+    };
+
+    // By position he develops on the wing, the only slot he can play, and the striker's slot
+    // is a position to learn.
+    let by_position = slots(&conn, save_id, &tactic)
+        .of(77)
+        .cloned()
+        .expect("development");
+    assert_eq!(by_position.suggested, Some(winger));
+    assert_eq!(option(&by_position, striker), (false, None));
+
+    set_position_familiarity(&conn, save_id, false).expect("stop holding positions against him");
+    assert_eq!(
+        load_settings(&conn, save_id)
+            .expect("settings")
+            .position_rule,
+        PositionRule::AnyPosition
+    );
+
+    // On role scores alone his potential outranks both of the save's strikers, so that is
+    // where he is growing, though he still cannot play there today.
+    let anywhere = slots(&conn, save_id, &tactic)
+        .of(77)
+        .cloned()
+        .expect("development");
+    assert_eq!(anywhere.suggested, Some(striker));
+    assert_eq!(anywhere.chosen, Some(striker));
+    assert_eq!(anywhere.options[0].lane_index, striker);
+    assert_eq!(option(&anywhere, striker), (false, Some(1.0)));
+    assert_eq!(option(&anywhere, winger), (true, Some(0.125)));
+    // Every slot his roles are scored for is ranked now, so none is left as only to learn.
+    assert!(anywhere
+        .options
+        .iter()
+        .all(|option| option.potential_rank.is_some()));
 }
 
 #[test]
@@ -241,6 +294,7 @@ fn a_save_starts_on_planner_training_and_the_strongest_squads() {
     assert_eq!(settings.training_basis, TrainingBasis::Planner);
     assert_eq!(settings.optimize_for, OptimizeFor::Strongest);
     assert_eq!(settings.max_age, 23);
+    assert_eq!(settings.position_rule, PositionRule::Familiarity);
 
     set_training_basis(&conn, save_id, TrainingBasis::Development).expect("train by development");
     set_optimize_for(&conn, save_id, OptimizeFor::Development).expect("optimize for development");

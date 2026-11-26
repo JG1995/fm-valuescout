@@ -1051,9 +1051,10 @@ CREATE INDEX idx_staff_snapshot_club_uid
 
 /// Development training. A save chooses whether individual training follows each player's
 /// Planner slot or his development slot, whether Optimize squads builds the strongest squads or
-/// keeps young players in their development slots, and up to what age a player counts as
-/// developing. `planner_development_slots` holds the slots the user chose in place of the
-/// suggested ones.
+/// keeps young players in their development slots, up to what age a player counts as
+/// developing, and whether a development slot is suggested only among the positions he can
+/// play. `planner_development_slots` holds the slots the user chose in place of the suggested
+/// ones.
 pub const DEVELOPMENT_TRAINING_V67_SQL: &str = "
 ALTER TABLE saves ADD COLUMN training_basis TEXT NOT NULL DEFAULT 'planner'
     CHECK (training_basis IN ('planner', 'development'));
@@ -1061,6 +1062,8 @@ ALTER TABLE saves ADD COLUMN optimize_for TEXT NOT NULL DEFAULT 'strongest'
     CHECK (optimize_for IN ('strongest', 'development'));
 ALTER TABLE saves ADD COLUMN development_max_age INTEGER NOT NULL DEFAULT 23
     CHECK (development_max_age BETWEEN 15 AND 28);
+ALTER TABLE saves ADD COLUMN development_position_familiarity INTEGER NOT NULL DEFAULT 1
+    CHECK (development_position_familiarity IN (0, 1));
 
 CREATE TABLE planner_development_slots (
     save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
@@ -6100,6 +6103,7 @@ mod tests {
                 "training_basis",
                 "optimize_for",
                 "development_max_age",
+                "development_position_familiarity",
             ]
         );
         assert_eq!(
@@ -8100,23 +8104,27 @@ mod tests {
         // An existing save trains by Planner slot and optimizes for the strongest squads.
         let settings = conn
             .query_row(
-                "SELECT training_basis, optimize_for, development_max_age FROM saves WHERE id = 1",
+                "SELECT training_basis, optimize_for, development_max_age,
+                        development_position_familiarity
+                 FROM saves WHERE id = 1",
                 [],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, i64>(2)?,
+                        row.get::<_, bool>(3)?,
                     ))
                 },
             )
             .expect("read settings");
-        assert_eq!(settings, ("planner".into(), "strongest".into(), 23));
+        assert_eq!(settings, ("planner".into(), "strongest".into(), 23, true));
         for invalid in [
             "UPDATE saves SET training_basis = 'potential'",
             "UPDATE saves SET optimize_for = 'youth'",
             "UPDATE saves SET development_max_age = 14",
             "UPDATE saves SET development_max_age = 29",
+            "UPDATE saves SET development_position_familiarity = 2",
         ] {
             assert!(conn.execute(invalid, []).is_err(), "{invalid} must fail");
         }

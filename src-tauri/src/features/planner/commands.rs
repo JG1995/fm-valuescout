@@ -1263,10 +1263,14 @@ pub struct SquadFmTrainingDevelopmentOptionDto {
     pub lane_id: String,
     pub ip_position: String,
     pub oop_position: String,
+    /// The slot's in-possession role, which names the slot beside its position.
+    pub in_possession_role: String,
     pub current_score: u8,
     pub potential_score: u8,
+    /// Whether he can play the slot's positions today.
+    pub playable: bool,
     /// Where his potential stands among the slot's players in the save, as a top percentage
-    /// from 1 to 100; absent for a slot he cannot play yet.
+    /// from 1 to 100; absent for a slot the save's position rule does not rank him in.
     pub potential_top_percent: Option<u8>,
 }
 
@@ -1295,8 +1299,10 @@ impl From<FmTrainingDevelopment> for SquadFmTrainingDevelopmentDto {
                     lane_id: option.lane_id,
                     ip_position: option.ip_position,
                     oop_position: option.oop_position,
+                    in_possession_role: option.in_possession,
                     current_score: option.current_score,
                     potential_score: option.potential_score,
+                    playable: option.playable,
                     potential_top_percent: option
                         .potential_rank
                         .map(|rank| ((1.0 - rank) * 100.0).ceil().clamp(1.0, 100.0) as u8),
@@ -1400,6 +1406,8 @@ pub struct SquadFmTrainingDto {
     pub basis: &'static str,
     /// The oldest age at which a player still counts as developing.
     pub development_max_age: i64,
+    /// Whether development slots are suggested only among the positions a player can play.
+    pub development_position_familiarity: bool,
     pub lanes: Vec<SquadFmTrainingLaneDto>,
 }
 
@@ -1453,6 +1461,7 @@ pub(super) fn read_squad_fm_training(
     let FmTrainingPlan {
         basis,
         development_max_age,
+        development_position_familiarity,
         lanes,
         changes,
     } = plan;
@@ -1464,6 +1473,7 @@ pub(super) fn read_squad_fm_training(
         },
         basis: basis.as_str(),
         development_max_age,
+        development_position_familiarity,
         lanes: lanes.into_iter().map(Into::into).collect(),
     })
 }
@@ -1499,6 +1509,19 @@ pub async fn set_training_basis(basis: String, db: State<'_, Db>) -> Result<(), 
 pub async fn set_development_max_age(max_age: i64, db: State<'_, Db>) -> Result<(), String> {
     change_development(db, move |conn, save_id| {
         development::set_max_age(conn, save_id, max_age)
+    })
+    .await
+}
+
+/// Sets whether the save's development slots are suggested only among the positions a player
+/// can play, or in any position on his role scores and preferred foot alone.
+#[tauri::command]
+pub async fn set_development_position_familiarity(
+    position_familiarity: bool,
+    db: State<'_, Db>,
+) -> Result<(), String> {
+    change_development(db, move |conn, save_id| {
+        development::set_position_familiarity(conn, save_id, position_familiarity)
     })
     .await
 }
@@ -1570,7 +1593,7 @@ pub(super) fn read_planner_development(db: &Db) -> Result<PlannerDevelopmentDto,
     ) {
         let tactic = tactic_service::get_tactic(&conn, save_id)?;
         let slots =
-            development::development_slots(&conn, save_id, snapshot_id, &tactic, settings.max_age)?;
+            development::development_slots(&conn, save_id, snapshot_id, &tactic, &settings)?;
         for (player_uid, lane_index) in slots.lanes() {
             players.push(PlannerDevelopmentPlayerDto {
                 player_uid,

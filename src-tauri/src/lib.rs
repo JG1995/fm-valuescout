@@ -158,6 +158,7 @@ pub fn run() {
             features::planner::commands::apply_squad_fm_training,
             features::planner::commands::set_training_basis,
             features::planner::commands::set_development_max_age,
+            features::planner::commands::set_development_position_familiarity,
             features::planner::commands::set_development_slot,
             features::planner::commands::set_planner_optimize_for,
             features::planner::commands::get_planner_development,

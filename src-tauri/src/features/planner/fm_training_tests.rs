@@ -238,6 +238,15 @@ fn training_by_development_follows_each_young_players_development_slot() {
     );
     let development = keeper.development.as_ref().expect("78 develops");
     assert_eq!(development.lane_id.as_deref(), Some("right_winger"));
+    // Each slot he could grow into is named by its position and the tactic's role there.
+    assert_eq!(
+        development
+            .options
+            .iter()
+            .map(|option| (option.lane_id.as_str(), option.in_possession.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("right_winger", "Winger"), ("left_winger", "Winger")]
+    );
     assert_eq!(
         development.suggested_lane_id.as_deref(),
         Some("right_winger")

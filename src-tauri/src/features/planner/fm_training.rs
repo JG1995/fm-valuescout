@@ -18,7 +18,7 @@ use rusqlite::{params, params_from_iter, Connection};
 
 use super::depth::{current_snapshot_id, PlannerTeam};
 use super::development::{self, same_training, DevelopmentSlots, PlayerDevelopment, TrainingBasis};
-use super::fit::{position_familiarity, FULL_FAMILIARITY};
+use super::fit::{position_familiarity, PositionRule, FULL_FAMILIARITY};
 use super::squad::{list_squad_players, SquadSortDir, SquadSortField, MAX_SQUAD_PAGE_LIMIT};
 use super::{suggested_training, tactic, teams};
 use crate::db::Db;
@@ -92,10 +92,15 @@ pub(super) struct FmTrainingDevelopmentOption {
     pub(super) lane_id: String,
     pub(super) ip_position: String,
     pub(super) oop_position: String,
+    /// The slot's in-possession role, which names the slot beside its position. He trains
+    /// its out-of-possession role too.
+    pub(super) in_possession: String,
     pub(super) current_score: u8,
     pub(super) potential_score: u8,
+    /// Whether he can play the slot's positions today.
+    pub(super) playable: bool,
     /// The share of the slot's players in the save whom his potential outranks; `None` for a
-    /// slot he cannot play yet.
+    /// slot the save's position rule does not rank him in.
     pub(super) potential_rank: Option<f64>,
 }
 
@@ -143,6 +148,8 @@ pub(super) struct FmTrainingPlan {
     pub(super) basis: TrainingBasis,
     /// The oldest age at which a player still counts as developing.
     pub(super) development_max_age: i64,
+    /// Whether development slots are suggested only among the positions a player can play.
+    pub(super) development_position_familiarity: bool,
     pub(super) lanes: Vec<FmTrainingLane>,
     /// The players in a Planner slot by squad, string, and slot, then the rest by name.
     pub(super) changes: Vec<FmTrainingChange>,
@@ -468,9 +475,9 @@ fn load_positions(
 fn development_of(
     tactic: &tactic::PlannerTactic,
     development: &PlayerDevelopment,
-) -> FmTrainingDevelopment {
+) -> Result<FmTrainingDevelopment, String> {
     let lane_id = |lane_index: usize| tactic.lanes[lane_index].lane_id.clone();
-    FmTrainingDevelopment {
+    Ok(FmTrainingDevelopment {
         lane_id: development.chosen.map(lane_id),
         suggested_lane_id: development.suggested.map(lane_id),
         locked: development.locked,
@@ -479,17 +486,19 @@ fn development_of(
             .iter()
             .map(|option| {
                 let lane = &tactic.lanes[option.lane_index];
-                FmTrainingDevelopmentOption {
+                Ok(FmTrainingDevelopmentOption {
                     lane_id: lane.lane_id.clone(),
                     ip_position: lane.ip_position.clone(),
                     oop_position: lane.oop_position.clone(),
+                    in_possession: catalog_role(&lane.ip_role_id)?.display_name.to_string(),
                     current_score: option.current,
                     potential_score: option.potential,
+                    playable: option.playable,
                     potential_rank: option.potential_rank,
-                }
+                })
             })
-            .collect(),
-    }
+            .collect::<Result<_, String>>()?,
+    })
 }
 
 /// The training to set for each of the managed club's players who is not loaned out, and what
@@ -514,7 +523,7 @@ pub(super) fn plan_fm_training(conn: &Connection, save_id: i64) -> Result<FmTrai
     };
     let slots = match (&tactic, current_snapshot_id(conn, save_id)?) {
         (Some(tactic), Some(snapshot_id)) => {
-            development::development_slots(conn, save_id, snapshot_id, tactic, settings.max_age)?
+            development::development_slots(conn, save_id, snapshot_id, tactic, &settings)?
         }
         _ => DevelopmentSlots::default(),
     };
@@ -601,7 +610,8 @@ pub(super) fn plan_fm_training(conn: &Connection, save_id: i64) -> Result<FmTrai
             let development = tactic
                 .as_ref()
                 .zip(slots.of(player.uid))
-                .map(|(tactic, development)| development_of(tactic, development));
+                .map(|(tactic, development)| development_of(tactic, development))
+                .transpose()?;
             Ok((
                 assignment.map(|assignment| assignment.order),
                 FmTrainingChange {
@@ -635,6 +645,7 @@ pub(super) fn plan_fm_training(conn: &Connection, save_id: i64) -> Result<FmTrai
     Ok(FmTrainingPlan {
         basis: settings.training_basis,
         development_max_age: settings.max_age,
+        development_position_familiarity: settings.position_rule == PositionRule::Familiarity,
         lanes: lanes.collect(),
         changes: changes.into_iter().map(|(_, change)| change).collect(),
     })
