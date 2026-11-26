@@ -16,7 +16,10 @@ pub fn run() {
     tauri::Builder::default()
         .register_asynchronous_uri_scheme_protocol("graphics", |_ctx, request, responder| {
             let app_handle = _ctx.app_handle().clone();
-            std::thread::spawn(move || {
+            // On the blocking pool, whose threads outlive a request: a scrolling table asks
+            // for dozens of images a second, and a thread started for each one costs more
+            // than reading the image.
+            tauri::async_runtime::spawn_blocking(move || {
                 let runtime = app_handle.state::<features::graphics::runtime::GraphicsRuntime>();
                 let response =
                     features::graphics::commands::graphics_protocol_response(request, &runtime);
