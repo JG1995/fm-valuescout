@@ -8,6 +8,7 @@ import type {
   PlannerSlotCandidate,
   PlannerUnassignedPlayer,
 } from "@/features/planner/types/depth";
+import type { PlannerDevelopment } from "@/features/planner/types/development";
 import type {
   PlannerRoleReference,
   PlannerRoleReferencePhase,
@@ -306,6 +307,12 @@ let tacticSaveError: string | null = null;
 let slotCandidates: PlannerSlotCandidate[] = [];
 let unassignedPlayers: PlannerUnassignedPlayer[] = [];
 let loanCandidates: PlannerLoanCandidate[] = [];
+const DEFAULT_DEVELOPMENT: PlannerDevelopment = {
+  optimizeFor: "strongest",
+  maxAge: 23,
+  players: [],
+};
+let development: PlannerDevelopment = { ...DEFAULT_DEVELOPMENT };
 let assignmentError: string | null = null;
 let clearAllError: string | null = null;
 let clearAllPending = false;
@@ -378,6 +385,9 @@ function cloneDepth(value: PlannerDepth): PlannerDepth {
         })),
       })),
     })),
+    ...(value.starterComparison
+      ? { starterComparison: { ...value.starterComparison } }
+      : {}),
   };
 }
 
@@ -489,6 +499,7 @@ function ensurePlannerSaveContext(saveId: number, contextToken: string) {
 }
 
 export function resetPlannerIpcMock() {
+  development = { ...DEFAULT_DEVELOPMENT };
   managedClub = { ...DEFAULT_MANAGED_CLUB };
   availableClubs = [];
   managedClubOptionsError = null;
@@ -945,6 +956,27 @@ export function resolvePlannerLoanCandidatesIpcMock() {
   return loanCandidates.map((candidate) => ({ ...candidate }));
 }
 
+export function setPlannerDevelopmentIpcMock(next: PlannerDevelopment) {
+  development = structuredClone(next);
+}
+
+export function resolvePlannerDevelopmentIpcMock() {
+  return structuredClone(development);
+}
+
+export function resolveSetPlannerOptimizeForIpcMock(args: unknown) {
+  if (
+    typeof args !== "object" ||
+    args === null ||
+    !("optimizeFor" in args) ||
+    (args.optimizeFor !== "strongest" && args.optimizeFor !== "development")
+  ) {
+    throw new Error("Invalid Optimize goal");
+  }
+  development = { ...development, optimizeFor: args.optimizeFor };
+  return null;
+}
+
 export function resolveSetPlannerAssignmentPinnedIpcMock(args: unknown) {
   if (assignmentError) {
     throw assignmentError;
@@ -1006,7 +1038,13 @@ export function resolveOptimizePlannerDepthIpcMock(args: unknown) {
     return new Promise<PlannerDepth>(() => {});
   }
   if (optimizeDepth) {
-    depth = cloneDepth(optimizeDepth);
+    // The comparison belongs to the Optimize result, not to the board.
+    const { starterComparison, ...board } = cloneDepth(optimizeDepth);
+    depth = board;
+    return {
+      ...cloneDepth(board),
+      starterComparison: starterComparison ?? null,
+    };
   }
   return cloneDepth(depth);
 }

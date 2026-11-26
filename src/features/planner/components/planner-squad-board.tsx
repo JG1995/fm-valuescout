@@ -1,4 +1,10 @@
-import { ArrowRightLeft, MapPinOff, Pin, TriangleAlert } from "lucide-react";
+import {
+  ArrowRightLeft,
+  MapPinOff,
+  Pin,
+  Split,
+  TriangleAlert,
+} from "lucide-react";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import type {
   PlannerAssignment,
@@ -111,6 +117,7 @@ function AssignmentCell({
   teamStart,
   plannerString,
   loanCandidateUids,
+  awayFromDevelopmentUids,
   onOpen,
 }: {
   team: PlannerTeam;
@@ -123,6 +130,7 @@ function AssignmentCell({
   teamStart: boolean;
   plannerString: PlannerDepthTeam["strings"][number];
   loanCandidateUids: ReadonlySet<number>;
+  awayFromDevelopmentUids: ReadonlySet<number>;
   onOpen: (target: PlannerSlotTarget) => void;
 }) {
   const stringLabel = plannerString.displayName;
@@ -134,6 +142,9 @@ function AssignmentCell({
   const potentialScore = assignment?.potentialCombinedScore ?? null;
   const loanCandidate =
     assignment !== undefined && loanCandidateUids.has(assignment.playerUid);
+  const awayFromDevelopment =
+    assignment !== undefined &&
+    awayFromDevelopmentUids.has(assignment.playerUid);
   const ariaLabel = assignment
     ? [
         `${teamLabel}, ${stringLabel}, ${laneName}, ${name}, ${state}, current score ${score ?? "—"}, expected score ${expectedScore ?? "—"}, potential score ${potentialScore ?? "—"}`,
@@ -142,6 +153,7 @@ function AssignmentCell({
         assignment.overAge ? "over the age limit" : null,
         assignment.outOfPosition ? "out of position" : null,
         loanCandidate ? "loan candidate" : null,
+        awayFromDevelopment ? "away from his development slot" : null,
       ]
         .filter((part) => part !== null)
         .join(", ")
@@ -217,6 +229,14 @@ function AssignmentCell({
                   <ArrowRightLeft aria-hidden="true" className="size-3" />
                 </span>
               ) : null}
+              {awayFromDevelopment ? (
+                <span
+                  className="shrink-0 text-info"
+                  title="Away from his development slot: he is growing into another slot"
+                >
+                  <Split aria-hidden="true" className="size-3" />
+                </span>
+              ) : null}
               <span className="ml-auto flex shrink-0">
                 <AssignmentScores
                   currentScore={score}
@@ -250,6 +270,8 @@ type PlannerSquadBoardProps = {
   options: TacticOptions;
   /** The players a loan would help enough to mark on the board. */
   loanCandidateUids: ReadonlySet<number>;
+  /** The developing players in a slot that trains differently from their development slot. */
+  awayFromDevelopmentUids: ReadonlySet<number>;
   onOpen: (target: PlannerSlotTarget) => void;
 };
 
@@ -258,6 +280,7 @@ export function PlannerSquadBoard({
   tactic,
   options,
   loanCandidateUids,
+  awayFromDevelopmentUids,
   onOpen,
 }: PlannerSquadBoardProps) {
   const teamDisplayName = (team: PlannerTeam) =>
@@ -399,6 +422,7 @@ export function PlannerSquadBoard({
                     stringHeaderId={`${idPrefix}-${team}-string-${plannerString.id}`}
                     plannerString={plannerString}
                     loanCandidateUids={loanCandidateUids}
+                    awayFromDevelopmentUids={awayFromDevelopmentUids}
                     onOpen={onOpen}
                   />
                 ))}

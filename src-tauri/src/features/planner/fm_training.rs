@@ -1,6 +1,8 @@
 //! Setting the managed club's players' individual training in FM.
 //!
-//! A player in a Planner slot trains the slot's in-possession role at its position and the slot's
+//! A player trains the roles of one tactic slot: the slot the Planner has him in, or, when the
+//! save trains by development and he is young enough, his development slot
+//! (`development.rs`). He trains the slot's in-possession role at its position and the slot's
 //! out-of-possession role. FM27 builds position familiarity only through the in-possession
 //! training, so a player who is fully familiar with the slot's in-possession position but not with
 //! its out-of-possession position trains an in-possession role at that position instead. Every
@@ -15,6 +17,7 @@ use std::collections::{BTreeMap, HashMap};
 use rusqlite::{params, params_from_iter, Connection};
 
 use super::depth::{current_snapshot_id, PlannerTeam};
+use super::development::{self, same_training, DevelopmentSlots, PlayerDevelopment, TrainingBasis};
 use super::fit::{position_familiarity, FULL_FAMILIARITY};
 use super::squad::{list_squad_players, SquadSortDir, SquadSortField, MAX_SQUAD_PAGE_LIMIT};
 use super::{suggested_training, tactic, teams};
@@ -29,7 +32,7 @@ use crate::features::scoring::catalog::{all_roles, RoleDefinition, RolePhase};
 /// FM27's focus value that clears a player's additional focus.
 const NO_FOCUS: i32 = -1;
 
-/// The roles a player in a Planner slot trains, in the app's names and in FM27's IDs.
+/// The roles a player trains for a slot, in the app's names and in FM27's IDs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct FmTrainingRoles {
     /// The position the in-possession role is trained at, such as `DC` for a right-sided
@@ -53,13 +56,24 @@ pub(super) struct LearningPosition {
     pub(super) out_of_possession: bool,
 }
 
-/// Where the Planner has a player, and what he trains there.
+/// Where the Planner has a player.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct FmTrainingSlot {
     pub(super) team: PlannerTeam,
     pub(super) team_name: String,
     pub(super) string_name: String,
+    pub(super) lane_id: String,
     /// The slot's placements in and out of possession, such as `AMR` and `MR`.
+    pub(super) ip_position: String,
+    pub(super) oop_position: String,
+    /// The slot position he is not yet fully familiar with, whatever he trains.
+    pub(super) learning: Option<LearningPosition>,
+}
+
+/// The slot whose roles a player trains.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct FmTrainingTarget {
+    pub(super) lane_id: String,
     pub(super) ip_position: String,
     pub(super) oop_position: String,
     /// The slot's own in-possession role. He trains another only while he learns the
@@ -67,19 +81,71 @@ pub(super) struct FmTrainingSlot {
     pub(super) in_possession: String,
     pub(super) roles: FmTrainingRoles,
     pub(super) learning: Option<LearningPosition>,
+    /// Whether it is his development slot and trains differently from the slot the Planner
+    /// has him in, if any.
+    pub(super) development: bool,
+}
+
+/// A slot a developing player could grow into.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct FmTrainingDevelopmentOption {
+    pub(super) lane_id: String,
+    pub(super) ip_position: String,
+    pub(super) oop_position: String,
+    pub(super) current_score: u8,
+    pub(super) potential_score: u8,
+    /// The share of the slot's players in the save whom his potential outranks; `None` for a
+    /// slot he cannot play yet.
+    pub(super) potential_rank: Option<f64>,
+}
+
+/// Where a player young enough to develop is growing, whatever the save trains by.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct FmTrainingDevelopment {
+    /// His development slot; `None` when he suits no slot.
+    pub(super) lane_id: Option<String>,
+    pub(super) suggested_lane_id: Option<String>,
+    /// Whether the user chose his development slot.
+    pub(super) locked: bool,
+    pub(super) options: Vec<FmTrainingDevelopmentOption>,
 }
 
 /// One player's training to set in FM.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) struct FmTrainingChange {
     pub(super) player_uid: i64,
     pub(super) name: String,
     pub(super) age: Option<i64>,
-    /// His Planner slot; `None` for a player in no slot, whose roles stay as they are.
+    /// His Planner slot; `None` for a player in no slot.
     pub(super) slot: Option<FmTrainingSlot>,
+    /// The slot whose roles he trains; `None` for a player whose roles stay as they are.
+    pub(super) target: Option<FmTrainingTarget>,
+    /// `None` for a player too old to develop, or of unknown age.
+    pub(super) development: Option<FmTrainingDevelopment>,
     /// His Suggested Training; `None` clears his focus.
     pub(super) focus: Option<String>,
     fm_focus: i32,
+}
+
+/// A slot of the tactic, as the plan names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct FmTrainingLane {
+    pub(super) lane_id: String,
+    pub(super) ip_position: String,
+    pub(super) oop_position: String,
+    /// The first slot of the tactic that trains the same as this one, which may be itself.
+    pub(super) trains_as: String,
+}
+
+/// The training to set for the managed club's players, and what it follows.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct FmTrainingPlan {
+    pub(super) basis: TrainingBasis,
+    /// The oldest age at which a player still counts as developing.
+    pub(super) development_max_age: i64,
+    pub(super) lanes: Vec<FmTrainingLane>,
+    /// The players in a Planner slot by squad, string, and slot, then the rest by name.
+    pub(super) changes: Vec<FmTrainingChange>,
 }
 
 /// FM's position mask for a Planner placement's base position.
@@ -399,12 +465,37 @@ fn load_positions(
         .collect()
 }
 
-/// The training to set for each of the managed club's players who is not loaned out: the
-/// players in a Planner slot by squad, string, and slot, then the rest by name.
-pub(super) fn plan_fm_training(
-    conn: &Connection,
-    save_id: i64,
-) -> Result<Vec<FmTrainingChange>, String> {
+fn development_of(
+    tactic: &tactic::PlannerTactic,
+    development: &PlayerDevelopment,
+) -> FmTrainingDevelopment {
+    let lane_id = |lane_index: usize| tactic.lanes[lane_index].lane_id.clone();
+    FmTrainingDevelopment {
+        lane_id: development.chosen.map(lane_id),
+        suggested_lane_id: development.suggested.map(lane_id),
+        locked: development.locked,
+        options: development
+            .options
+            .iter()
+            .map(|option| {
+                let lane = &tactic.lanes[option.lane_index];
+                FmTrainingDevelopmentOption {
+                    lane_id: lane.lane_id.clone(),
+                    ip_position: lane.ip_position.clone(),
+                    oop_position: lane.oop_position.clone(),
+                    current_score: option.current,
+                    potential_score: option.potential,
+                    potential_rank: option.potential_rank,
+                }
+            })
+            .collect(),
+    }
+}
+
+/// The training to set for each of the managed club's players who is not loaned out, and what
+/// the save's training follows.
+pub(super) fn plan_fm_training(conn: &Connection, save_id: i64) -> Result<FmTrainingPlan, String> {
+    let settings = development::load_settings(conn, save_id)?;
     let has_tactic: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM planner_tactic_lanes WHERE save_id = ?1)",
@@ -420,6 +511,12 @@ pub(super) fn plan_fm_training(
     let assignments = match &tactic {
         Some(tactic) => load_assignments(conn, save_id, tactic)?,
         None => HashMap::new(),
+    };
+    let slots = match (&tactic, current_snapshot_id(conn, save_id)?) {
+        (Some(tactic), Some(snapshot_id)) => {
+            development::development_slots(conn, save_id, snapshot_id, tactic, settings.max_age)?
+        }
+        _ => DevelopmentSlots::default(),
     };
 
     // The Squad overview's own read, so the focus is the one its column shows.
@@ -443,12 +540,29 @@ pub(super) fn plan_fm_training(
         }
     }
 
-    let assigned_uids = players
+    // The lane each player trains: his development slot when the save trains by it and it
+    // trains differently from his Planner slot, otherwise his Planner slot.
+    let trained_lane = |player_uid: i64| {
+        let planner_lane = assignments
+            .get(&player_uid)
+            .map(|assignment| assignment.lane);
+        let tactic = tactic.as_ref()?;
+        let development_lane = (settings.training_basis == TrainingBasis::Development)
+            .then(|| slots.lane_of(player_uid))
+            .flatten()
+            .map(|lane_index| &tactic.lanes[lane_index])
+            .filter(|lane| !planner_lane.is_some_and(|planner| same_training(planner, lane)));
+        match development_lane {
+            Some(lane) => Some((lane, true)),
+            None => planner_lane.map(|lane| (lane, false)),
+        }
+    };
+    let positioned_uids = players
         .iter()
         .map(|player| player.uid)
-        .filter(|uid| assignments.contains_key(uid))
+        .filter(|uid| trained_lane(*uid).is_some())
         .collect::<Vec<_>>();
-    let positions = load_positions(conn, save_id, &assigned_uids)?;
+    let positions = load_positions(conn, save_id, &positioned_uids)?;
     let no_positions = BTreeMap::new();
 
     let mut changes = players
@@ -459,26 +573,35 @@ pub(super) fn plan_fm_training(
                     .ok_or_else(|| format!("FM27 has no `{focus}` focus"))?,
                 None => NO_FOCUS,
             };
+            let positions = positions.get(&player.uid).unwrap_or(&no_positions);
             let assignment = assignments.get(&player.uid);
-            let slot = assignment
-                .map(|assignment| {
-                    let lane = assignment.lane;
-                    let learning = learning_position(
-                        lane,
-                        positions.get(&player.uid).unwrap_or(&no_positions),
-                    );
-                    Ok::<_, String>(FmTrainingSlot {
-                        team: assignment.team,
-                        team_name: assignment.team_name.clone(),
-                        string_name: assignment.string_name.clone(),
+            let slot = assignment.map(|assignment| FmTrainingSlot {
+                team: assignment.team,
+                team_name: assignment.team_name.clone(),
+                string_name: assignment.string_name.clone(),
+                lane_id: assignment.lane.lane_id.clone(),
+                ip_position: assignment.lane.ip_position.clone(),
+                oop_position: assignment.lane.oop_position.clone(),
+                learning: learning_position(assignment.lane, positions),
+            });
+            let target = trained_lane(player.uid)
+                .map(|(lane, development)| {
+                    let learning = learning_position(lane, positions);
+                    Ok::<_, String>(FmTrainingTarget {
+                        lane_id: lane.lane_id.clone(),
                         ip_position: lane.ip_position.clone(),
                         oop_position: lane.oop_position.clone(),
                         in_possession: catalog_role(&lane.ip_role_id)?.display_name.to_string(),
                         roles: slot_roles(lane, learning.as_ref())?,
                         learning,
+                        development,
                     })
                 })
                 .transpose()?;
+            let development = tactic
+                .as_ref()
+                .zip(slots.of(player.uid))
+                .map(|(tactic, development)| development_of(tactic, development));
             Ok((
                 assignment.map(|assignment| assignment.order),
                 FmTrainingChange {
@@ -486,6 +609,8 @@ pub(super) fn plan_fm_training(
                     name: player.name,
                     age: player.age,
                     slot,
+                    target,
+                    development,
                     focus: player.suggested_training,
                     fm_focus,
                 },
@@ -494,7 +619,25 @@ pub(super) fn plan_fm_training(
         .collect::<Result<Vec<_>, String>>()?;
     // The sort is stable, so the players in no slot keep the read's name order.
     changes.sort_by_key(|(order, _)| (order.is_none(), *order));
-    Ok(changes.into_iter().map(|(_, change)| change).collect())
+
+    let lanes = tactic.iter().flat_map(|tactic| {
+        tactic.lanes.iter().map(|lane| FmTrainingLane {
+            lane_id: lane.lane_id.clone(),
+            ip_position: lane.ip_position.clone(),
+            oop_position: lane.oop_position.clone(),
+            trains_as: tactic
+                .lanes
+                .iter()
+                .find(|other| same_training(other, lane))
+                .map_or_else(|| lane.lane_id.clone(), |other| other.lane_id.clone()),
+        })
+    });
+    Ok(FmTrainingPlan {
+        basis: settings.training_basis,
+        development_max_age: settings.max_age,
+        lanes: lanes.collect(),
+        changes: changes.into_iter().map(|(_, change)| change).collect(),
+    })
 }
 
 pub(super) const LOAD_DATA_FIRST: &str =
@@ -533,11 +676,11 @@ where
 {
     let _guard = boost_gate::acquire_boost_gate()?;
     let (context, changes) = {
-        let conn =
-            db.0.lock()
-                .map_err(|_| "database lock poisoned".to_string())?;
+        // A reader, which keeps the save's rankings between requests.
+        let conn = db.read()?;
         let context = capture_training_context(&conn)?;
         let changes = plan_fm_training(&conn, context.save_id)?
+            .changes
             .into_iter()
             .filter(|planned| player_uids.contains(&planned.player_uid))
             .collect::<Vec<_>>();
@@ -554,7 +697,7 @@ where
     let items = changes
         .iter()
         .map(|planned| {
-            let roles = planned.slot.as_ref().map(|slot| &slot.roles);
+            let roles = planned.target.as_ref().map(|target| &target.roles);
             Ok(TrainingChangeItem {
                 player_uid: u32::try_from(planned.player_uid)
                     .map_err(|_| format!("{} has an invalid player identity", planned.name))?,
@@ -603,7 +746,7 @@ fn failure_reason(planned: &FmTrainingChange, outcome: &TrainingOutcome) -> Stri
         None => format!("the {what}"),
     };
     let mut parts = Vec::new();
-    if let Some(roles) = planned.slot.as_ref().map(|slot| &slot.roles) {
+    if let Some(roles) = planned.target.as_ref().map(|target| &target.roles) {
         if outcome.ip_position != Some(roles.fm_position)
             || outcome.ip_role != Some(roles.fm_in_possession)
         {

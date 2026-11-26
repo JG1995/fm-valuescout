@@ -431,6 +431,151 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           })),
         })),
       };
+      // Development training: what the save's training follows, what Optimize builds, and
+      // the slots the user chose in place of the suggested ones.
+      let trainingBasis = "planner";
+      let developmentMaxAge = 23;
+      let plannerOptimizeFor = "strongest";
+      const developmentChoices = new Map();
+      // Each slot: placements in and out of possession, the position its role is trained
+      // at, its roles, and the first slot that trains the same.
+      const trainingSlots = {
+        goalkeeper: ["GK", "GK", "GK", "Ball-Playing Goalkeeper", "Sweeper Keeper", "goalkeeper"],
+        left_back: ["DL", "DL", "DL", "Inside Full-Back", "Pressing Full-Back", "left_back"],
+        left_centre_back: ["DCL", "DCL", "DC", "Centre-Back", "Stopping Centre-Back", "left_centre_back"],
+        right_centre_back: ["DCR", "DCR", "DC", "Centre-Back", "Stopping Centre-Back", "left_centre_back"],
+        right_back: ["DR", "DR", "DR", "Inside Full-Back", "Pressing Full-Back", "right_back"],
+        defensive_midfielder: ["DM", "DM", "DM", "Defensive Midfielder", "Screening Defensive Midfielder", "defensive_midfielder"],
+        left_central_midfielder: ["MCL", "MCL", "MC", "Midfield Playmaker", "Pressing Central Midfielder", "left_central_midfielder"],
+        right_central_midfielder: ["MCR", "MCR", "MC", "Midfield Playmaker", "Pressing Central Midfielder", "left_central_midfielder"],
+        left_winger: ["AML", "ML", "AML", "Inside Forward", "Tracking Wide Midfielder", "left_winger"],
+        right_winger: ["AMR", "MR", "AMR", "Inside Forward", "Tracking Wide Midfielder", "right_winger"],
+        centre_forward: ["STC", "STC", "ST", "Channel Forward", "Tracking Centre Forward", "centre_forward"],
+      };
+      // Each player: where the Planner has him and what he trains there, then the slots he
+      // could grow into as [slot, score now, score at potential, top percent or null for a
+      // position to learn], the suggested one first, and what he would be learning there.
+      const trainingSquad = [
+        {
+          playerUid: 9101, name: "Potential Keeper", age: 19,
+          place: ["senior", "Senior", "Starter", "goalkeeper"],
+          planner: { focus: "GK Distribution" },
+          grows: [["goalkeeper", 62, 84, 6]],
+        },
+        {
+          playerUid: 9102, name: "Veteran Full-Back", age: 31,
+          place: ["senior", "Senior", "Starter", "right_back"],
+          planner: { focus: null },
+          grows: [["right_back", 78, 78, 30]],
+        },
+        {
+          playerUid: 9104, name: "Converted Winger", age: 22,
+          place: ["senior", "Senior", "Starter", "right_winger"],
+          planner: {
+            position: "MR", role: "Inside Winger", focus: "Chance Creation",
+            learning: { position: "MR", familiarity: 9, outOfPossession: true },
+          },
+          grows: [["centre_forward", 68, 84, 4], ["right_winger", 72, 77, 35], ["left_winger", 69, 75, null]],
+          growing: { centre_forward: { learning: { position: "ST", familiarity: 13, outOfPossession: false }, focus: "Chance Conversion" } },
+        },
+        {
+          playerUid: 9105, name: "Makeshift Centre-Back", age: 24,
+          place: ["senior", "Senior", "Backup", "right_centre_back"],
+          planner: {
+            focus: "Defensive Positioning",
+            learning: { position: "DC", familiarity: 5, outOfPossession: false },
+          },
+          grows: [["defensive_midfielder", 71, 78, 20], ["right_centre_back", 58, 64, null]],
+          growing: { defensive_midfielder: { focus: "Passing" } },
+        },
+        {
+          playerUid: 9106, name: "Reserve Playmaker", age: 20,
+          place: ["reserves", "Reserves", "1st string", "left_central_midfielder"],
+          planner: { focus: "Passing" },
+          grows: [["left_central_midfielder", 66, 81, 12], ["defensive_midfielder", 61, 76, 28]],
+        },
+        {
+          playerUid: 9107, name: "Academy Striker", age: 17,
+          place: ["youth", "Youth", "1st string", "centre_forward"],
+          planner: {
+            focus: "Chance Conversion",
+            learning: { position: "ST", familiarity: 0, outOfPossession: false },
+          },
+          grows: [["right_winger", 58, 83, 5], ["centre_forward", 50, 80, null]],
+          growing: { right_winger: { focus: "Quickness" } },
+        },
+        {
+          playerUid: 9103, name: "Unread Youngster", age: 18,
+          place: null,
+          planner: { focus: "Quickness" },
+          grows: [["left_back", 55, 79, 15], ["left_winger", 52, 70, 44]],
+          growing: { left_back: { focus: "Endurance" } },
+        },
+      ];
+      const trainingGroup = (laneId) => trainingSlots[laneId][5];
+      const developmentLaneOf = (player) => {
+        if (player.age > developmentMaxAge) {
+          return null;
+        }
+        return developmentChoices.get(player.playerUid) ?? player.grows[0][0];
+      };
+      const trainingPlayer = (player) => {
+        const placed = player.place ? trainingSlots[player.place[3]] : null;
+        const developmentLane = developmentLaneOf(player);
+        const away =
+          trainingBasis === "development" &&
+          developmentLane !== null &&
+          (placed === null || trainingGroup(developmentLane) !== placed[5]);
+        const targetLane = away ? developmentLane : (player.place?.[3] ?? null);
+        const target = targetLane ? trainingSlots[targetLane] : null;
+        const growing = away ? (player.growing?.[targetLane] ?? {}) : player.planner;
+        return {
+          playerUid: player.playerUid,
+          name: player.name,
+          age: player.age,
+          slot: placed
+            ? {
+                team: player.place[0],
+                teamName: player.place[1],
+                stringName: player.place[2],
+                laneId: player.place[3],
+                ipPosition: placed[0],
+                oopPosition: placed[1],
+                learning: player.planner.learning ?? null,
+              }
+            : null,
+          target: target
+            ? {
+                laneId: targetLane,
+                ipPosition: target[0],
+                oopPosition: target[1],
+                inPossessionRole: target[3],
+                development: away,
+              }
+            : null,
+          position: target ? (growing.position ?? target[2]) : null,
+          inPossessionRole: target ? (growing.role ?? target[3]) : null,
+          outOfPossessionRole: target ? target[4] : null,
+          learning: target ? (growing.learning ?? null) : null,
+          development:
+            player.age > developmentMaxAge
+              ? null
+              : {
+                  laneId: developmentLane,
+                  suggestedLaneId: player.grows[0][0],
+                  locked: developmentChoices.has(player.playerUid),
+                  options: player.grows.map(([laneId, currentScore, potentialScore, top]) => ({
+                    laneId,
+                    ipPosition: trainingSlots[laneId][0],
+                    oopPosition: trainingSlots[laneId][1],
+                    currentScore,
+                    potentialScore,
+                    potentialTopPercent: top,
+                  })),
+                },
+          focus: growing.focus ?? null,
+        };
+      };
       let squadPlayers = squadOverview ? [
         {
           uid: 42,
@@ -2494,156 +2639,60 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_squad_fm_training") {
-            const slot = (
-              team,
-              teamName,
-              stringName,
-              ipPosition,
-              oopPosition,
-              inPossessionRole,
-            ) => ({
-              team,
-              teamName,
-              stringName,
-              ipPosition,
-              oopPosition,
-              inPossessionRole,
-            });
             return {
-              players: [
-                {
-                  playerUid: 9101,
-                  name: "Potential Keeper",
-                  age: 19,
-                  slot: slot(
-                    "senior",
-                    "Senior",
-                    "Starter",
-                    "GK",
-                    "GK",
-                    "Ball-Playing Goalkeeper",
-                  ),
-                  position: "GK",
-                  inPossessionRole: "Ball-Playing Goalkeeper",
-                  outOfPossessionRole: "Sweeper Keeper",
-                  learning: null,
-                  focus: "GK Distribution",
-                },
-                {
-                  playerUid: 9102,
-                  name: "Veteran Full-Back",
-                  age: 31,
-                  slot: slot(
-                    "senior",
-                    "Senior",
-                    "Starter",
-                    "DR",
-                    "DR",
-                    "Inside Full-Back",
-                  ),
-                  position: "DR",
-                  inPossessionRole: "Inside Full-Back",
-                  outOfPossessionRole: "Pressing Full-Back",
-                  learning: null,
-                  focus: null,
-                },
-                {
-                  playerUid: 9104,
-                  name: "Converted Winger",
-                  age: 22,
-                  slot: slot(
-                    "senior",
-                    "Senior",
-                    "Starter",
-                    "AMR",
-                    "MR",
-                    "Inside Forward",
-                  ),
-                  position: "MR",
-                  inPossessionRole: "Inside Winger",
-                  outOfPossessionRole: "Tracking Wide Midfielder",
-                  learning: {
-                    position: "MR",
-                    familiarity: 9,
-                    outOfPossession: true,
-                  },
-                  focus: "Chance Creation",
-                },
-                {
-                  playerUid: 9105,
-                  name: "Makeshift Centre-Back",
-                  age: 24,
-                  slot: slot(
-                    "senior",
-                    "Senior",
-                    "Backup",
-                    "DCR",
-                    "DCR",
-                    "Centre-Back",
-                  ),
-                  position: "DC",
-                  inPossessionRole: "Centre-Back",
-                  outOfPossessionRole: "Stopping Centre-Back",
-                  learning: {
-                    position: "DC",
-                    familiarity: 5,
-                    outOfPossession: false,
-                  },
-                  focus: "Defensive Positioning",
-                },
-                {
-                  playerUid: 9106,
-                  name: "Reserve Playmaker",
-                  age: 20,
-                  slot: slot(
-                    "reserves",
-                    "Reserves",
-                    "1st string",
-                    "MCL",
-                    "MCL",
-                    "Midfield Playmaker",
-                  ),
-                  position: "MC",
-                  inPossessionRole: "Midfield Playmaker",
-                  outOfPossessionRole: "Pressing Central Midfielder",
-                  learning: null,
-                  focus: "Passing",
-                },
-                {
-                  playerUid: 9107,
-                  name: "Academy Striker",
-                  age: 17,
-                  slot: slot(
-                    "youth",
-                    "Youth",
-                    "1st string",
-                    "STC",
-                    "STC",
-                    "Channel Forward",
-                  ),
-                  position: "ST",
-                  inPossessionRole: "Channel Forward",
-                  outOfPossessionRole: "Tracking Centre Forward",
-                  learning: {
-                    position: "ST",
-                    familiarity: 0,
-                    outOfPossession: false,
-                  },
-                  focus: "Chance Conversion",
-                },
-                {
-                  playerUid: 9103,
-                  name: "Unread Youngster",
-                  age: 18,
-                  slot: null,
-                  position: null,
-                  inPossessionRole: null,
-                  outOfPossessionRole: null,
-                  learning: null,
-                  focus: "Quickness",
-                },
-              ],
+              players: trainingSquad.map(trainingPlayer),
               unavailableReason: null,
+              basis: trainingBasis,
+              developmentMaxAge,
+              lanes: Object.entries(trainingSlots).map(([laneId, slot]) => ({
+                laneId,
+                ipPosition: slot[0],
+                oopPosition: slot[1],
+                trainsAs: slot[5],
+              })),
+            };
+          }
+
+          if (cmd === "set_training_basis") {
+            if (args?.basis !== "planner" && args?.basis !== "development") {
+              throw new Error("Unknown training basis");
+            }
+            trainingBasis = args.basis;
+            return null;
+          }
+
+          if (cmd === "set_development_max_age") {
+            developmentMaxAge = Number(args?.maxAge);
+            return null;
+          }
+
+          if (cmd === "set_development_slot") {
+            if (args?.laneId == null) {
+              developmentChoices.delete(args?.playerUid);
+            } else {
+              developmentChoices.set(args?.playerUid, args.laneId);
+            }
+            return null;
+          }
+
+          if (cmd === "set_planner_optimize_for") {
+            if (
+              args?.optimizeFor !== "strongest" &&
+              args?.optimizeFor !== "development"
+            ) {
+              throw new Error("Unknown Optimize goal");
+            }
+            plannerOptimizeFor = args.optimizeFor;
+            return null;
+          }
+
+          if (cmd === "get_planner_development") {
+            // The keeper on the board is developing towards the right wing, so his cell
+            // shows the mark.
+            return {
+              optimizeFor: plannerOptimizeFor,
+              maxAge: developmentMaxAge,
+              players: [{ playerUid: 77, laneIds: ["right_winger"] }],
             };
           }
 
@@ -2821,7 +2870,17 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 potentialCombinedScore: 91,
               },
             ];
-            return plannerDepth;
+            return plannerOptimizeFor === "development"
+              ? {
+                  ...plannerDepth,
+                  starterComparison: {
+                    starters: 11,
+                    score: 868,
+                    strongestStarters: 11,
+                    strongestScore: 879,
+                  },
+                }
+              : plannerDepth;
           }
 
           if (cmd === "clear_planner_depth") {

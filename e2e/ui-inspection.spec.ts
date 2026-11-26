@@ -176,6 +176,29 @@ for (const inspectedPage of pages) {
     }
     expect(pageErrors).toEqual([]);
 
+    if (inspectedPage.route.includes("#inspection-development")) {
+      // The save trains by development slot and optimizes for development.
+      const main = page.getByRole("main");
+      const training = main.getByRole("button", {
+        name: "Development slot",
+        exact: true,
+      });
+      if (await training.isVisible()) {
+        await training.click();
+        await expect(
+          main.getByText("Developing towards", { exact: true }),
+        ).toBeVisible();
+      } else {
+        await main
+          .getByRole("button", { name: "Development", exact: true })
+          .click();
+        await main.getByRole("button", { name: "Optimize squads" }).click();
+        await expect(
+          main.getByText(/Squads optimized for development/),
+        ).toBeVisible();
+      }
+    }
+
     if (inspectedPage.route.includes("#inspection-shortlist-selected")) {
       await page
         .getByRole("combobox", { name: "Shortlist" })

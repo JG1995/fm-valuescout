@@ -9,11 +9,15 @@ use crate::features::snapshot::service;
 
 use super::depth::{
     self as depth_service, PlannerAssignment, PlannerAssignmentLocation, PlannerDepth,
-    PlannerDepthTeam, PlannerSlotCandidate, PlannerString, PlannerTeam,
+    PlannerDepthTeam, PlannerSlotCandidate, PlannerString, PlannerTeam, StarterComparison,
 };
+use super::development::{self, same_training, OptimizeFor, TrainingBasis};
 use super::fit::PositionRule;
 use super::fm_moves::{self, FmSquadMove, FmSquadMoveReport};
-use super::fm_training::{self, FmTrainingChange, FmTrainingReport};
+use super::fm_training::{
+    self, FmTrainingChange, FmTrainingDevelopment, FmTrainingLane, FmTrainingPlan,
+    FmTrainingReport, LearningPosition,
+};
 use super::loans::{self, LoanCandidate};
 use super::optimizer;
 use super::role_reference::{
@@ -482,11 +486,24 @@ impl From<PlannerDepthTeam> for PlannerDepthTeamDto {
     }
 }
 
+/// How the Starter lineup that Optimize filled for development compares with the strongest
+/// one: the players each holds and the sum of their current fit scores.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerStarterComparisonDto {
+    pub starters: usize,
+    pub score: u32,
+    pub strongest_starters: usize,
+    pub strongest_score: u32,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlannerDepthDto {
     pub tactic: PlannerTacticDto,
     pub teams: Vec<PlannerDepthTeamDto>,
+    /// Present only on the result of Optimize squads when it built for development.
+    pub starter_comparison: Option<PlannerStarterComparisonDto>,
 }
 
 impl From<PlannerDepth> for PlannerDepthDto {
@@ -498,6 +515,19 @@ impl From<PlannerDepth> for PlannerDepthDto {
                 .into_iter()
                 .map(PlannerDepthTeamDto::from)
                 .collect(),
+            starter_comparison: depth.starter_comparison.map(
+                |StarterComparison {
+                     starters,
+                     score,
+                     strongest_starters,
+                     strongest_score,
+                 }| PlannerStarterComparisonDto {
+                    starters,
+                    score,
+                    strongest_starters,
+                    strongest_score,
+                },
+            ),
         }
     }
 }
@@ -1174,22 +1204,7 @@ pub async fn apply_planner_fm_moves(
     .await
 }
 
-/// Where the Planner has a player.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SquadFmTrainingSlotDto {
-    pub team: &'static str,
-    pub team_name: String,
-    pub string_name: String,
-    /// The slot's placements in and out of possession, such as `AMR` and `MR`.
-    pub ip_position: String,
-    pub oop_position: String,
-    /// The slot's own in-possession role, which he trains unless he is learning the
-    /// out-of-possession position.
-    pub in_possession_role: String,
-}
-
-/// A slot position a player trains to become fully familiar with it.
+/// A slot position a player is not yet fully familiar with.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SquadFmTrainingLearningDto {
@@ -1201,19 +1216,114 @@ pub struct SquadFmTrainingLearningDto {
     pub out_of_possession: bool,
 }
 
+impl From<LearningPosition> for SquadFmTrainingLearningDto {
+    fn from(learning: LearningPosition) -> Self {
+        Self {
+            position: learning.position,
+            familiarity: learning.familiarity,
+            out_of_possession: learning.out_of_possession,
+        }
+    }
+}
+
+/// Where the Planner has a player.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadFmTrainingSlotDto {
+    pub team: &'static str,
+    pub team_name: String,
+    pub string_name: String,
+    pub lane_id: String,
+    /// The slot's placements in and out of possession, such as `AMR` and `MR`.
+    pub ip_position: String,
+    pub oop_position: String,
+    /// The slot position he is not yet fully familiar with, whatever he trains.
+    pub learning: Option<SquadFmTrainingLearningDto>,
+}
+
+/// The slot whose roles a player trains.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadFmTrainingTargetDto {
+    pub lane_id: String,
+    pub ip_position: String,
+    pub oop_position: String,
+    /// The slot's own in-possession role, which he trains unless he is learning the
+    /// out-of-possession position.
+    pub in_possession_role: String,
+    /// Whether it is his development slot and trains differently from his Planner slot, if he
+    /// has one.
+    pub development: bool,
+}
+
+/// A slot a developing player could grow into.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadFmTrainingDevelopmentOptionDto {
+    pub lane_id: String,
+    pub ip_position: String,
+    pub oop_position: String,
+    pub current_score: u8,
+    pub potential_score: u8,
+    /// Where his potential stands among the slot's players in the save, as a top percentage
+    /// from 1 to 100; absent for a slot he cannot play yet.
+    pub potential_top_percent: Option<u8>,
+}
+
+/// Where a player young enough to develop is growing.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadFmTrainingDevelopmentDto {
+    /// His development slot; absent when he suits no slot.
+    pub lane_id: Option<String>,
+    pub suggested_lane_id: Option<String>,
+    /// Whether the user chose his development slot.
+    pub locked: bool,
+    pub options: Vec<SquadFmTrainingDevelopmentOptionDto>,
+}
+
+impl From<FmTrainingDevelopment> for SquadFmTrainingDevelopmentDto {
+    fn from(development: FmTrainingDevelopment) -> Self {
+        Self {
+            lane_id: development.lane_id,
+            suggested_lane_id: development.suggested_lane_id,
+            locked: development.locked,
+            options: development
+                .options
+                .into_iter()
+                .map(|option| SquadFmTrainingDevelopmentOptionDto {
+                    lane_id: option.lane_id,
+                    ip_position: option.ip_position,
+                    oop_position: option.oop_position,
+                    current_score: option.current_score,
+                    potential_score: option.potential_score,
+                    potential_top_percent: option
+                        .potential_rank
+                        .map(|rank| ((1.0 - rank) * 100.0).ceil().clamp(1.0, 100.0) as u8),
+                })
+                .collect(),
+        }
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SquadFmTrainingPlayerDto {
     pub player_uid: i64,
     pub name: String,
     pub age: Option<i64>,
-    /// His Planner slot; absent for a player in no slot, whose roles FM keeps.
+    /// His Planner slot; absent for a player in no slot.
     pub slot: Option<SquadFmTrainingSlotDto>,
-    /// The position his in-possession role is trained at; absent for a player in no slot.
+    /// The slot whose roles he trains; absent for a player whose roles FM keeps.
+    pub target: Option<SquadFmTrainingTargetDto>,
+    /// The position his in-possession role is trained at; absent with `target`.
     pub position: Option<String>,
     pub in_possession_role: Option<String>,
     pub out_of_possession_role: Option<String>,
+    /// The position of `target` he trains to become fully familiar with it.
     pub learning: Option<SquadFmTrainingLearningDto>,
+    /// Absent for a player too old to develop, or of unknown age.
+    pub development: Option<SquadFmTrainingDevelopmentDto>,
     /// His Suggested Training; absent means his focus is cleared.
     pub focus: Option<String>,
 }
@@ -1224,32 +1334,59 @@ impl From<FmTrainingChange> for SquadFmTrainingPlayerDto {
             player_uid: planned.player_uid,
             name: planned.name,
             age: planned.age,
-            slot: None,
+            slot: planned.slot.map(|slot| SquadFmTrainingSlotDto {
+                team: slot.team.as_str(),
+                team_name: slot.team_name,
+                string_name: slot.string_name,
+                lane_id: slot.lane_id,
+                ip_position: slot.ip_position,
+                oop_position: slot.oop_position,
+                learning: slot.learning.map(Into::into),
+            }),
+            target: None,
             position: None,
             in_possession_role: None,
             out_of_possession_role: None,
             learning: None,
+            development: planned.development.map(Into::into),
             focus: planned.focus,
         };
-        if let Some(slot) = planned.slot {
-            player.position = Some(slot.roles.position);
-            player.in_possession_role = Some(slot.roles.in_possession);
-            player.out_of_possession_role = Some(slot.roles.out_of_possession);
-            player.learning = slot.learning.map(|learning| SquadFmTrainingLearningDto {
-                position: learning.position,
-                familiarity: learning.familiarity,
-                out_of_possession: learning.out_of_possession,
-            });
-            player.slot = Some(SquadFmTrainingSlotDto {
-                team: slot.team.as_str(),
-                team_name: slot.team_name,
-                string_name: slot.string_name,
-                ip_position: slot.ip_position,
-                oop_position: slot.oop_position,
-                in_possession_role: slot.in_possession,
+        if let Some(target) = planned.target {
+            player.position = Some(target.roles.position);
+            player.in_possession_role = Some(target.roles.in_possession);
+            player.out_of_possession_role = Some(target.roles.out_of_possession);
+            player.learning = target.learning.map(Into::into);
+            player.target = Some(SquadFmTrainingTargetDto {
+                lane_id: target.lane_id,
+                ip_position: target.ip_position,
+                oop_position: target.oop_position,
+                in_possession_role: target.in_possession,
+                development: target.development,
             });
         }
         player
+    }
+}
+
+/// A slot of the tactic, as the training plan names it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadFmTrainingLaneDto {
+    pub lane_id: String,
+    pub ip_position: String,
+    pub oop_position: String,
+    /// The first slot of the tactic that trains the same as this one, which may be itself.
+    pub trains_as: String,
+}
+
+impl From<FmTrainingLane> for SquadFmTrainingLaneDto {
+    fn from(lane: FmTrainingLane) -> Self {
+        Self {
+            lane_id: lane.lane_id,
+            ip_position: lane.ip_position,
+            oop_position: lane.oop_position,
+            trains_as: lane.trains_as,
+        }
     }
 }
 
@@ -1259,6 +1396,11 @@ pub struct SquadFmTrainingDto {
     pub players: Vec<SquadFmTrainingPlayerDto>,
     /// Why the training cannot be set now; absent when it can.
     pub unavailable_reason: Option<String>,
+    /// What training follows: `planner` or `development`.
+    pub basis: &'static str,
+    /// The oldest age at which a player still counts as developing.
+    pub development_max_age: i64,
+    pub lanes: Vec<SquadFmTrainingLaneDto>,
 }
 
 #[derive(Serialize)]
@@ -1308,12 +1450,144 @@ pub(super) fn read_squad_fm_training(
             fm_training::capture_training_context(&conn),
         )
     };
+    let FmTrainingPlan {
+        basis,
+        development_max_age,
+        lanes,
+        changes,
+    } = plan;
     Ok(SquadFmTrainingDto {
-        players: plan.into_iter().map(Into::into).collect(),
+        players: changes.into_iter().map(Into::into).collect(),
         unavailable_reason: match context {
             Err(reason) => Some(reason),
             Ok(_) => bridge_unavailable(),
         },
+        basis: basis.as_str(),
+        development_max_age,
+        lanes: lanes.into_iter().map(Into::into).collect(),
+    })
+}
+
+/// Runs one change to the active save's development settings on the writer.
+async fn change_development(
+    db: State<'_, Db>,
+    change: impl FnOnce(&Connection, i64) -> Result<(), String> + Send + 'static,
+) -> Result<(), String> {
+    let db = db.inner().clone();
+    blocking::run(move || {
+        let conn =
+            db.0.lock()
+                .map_err(|_| "database lock poisoned".to_string())?;
+        let save_id = service::active_save_id(&conn)?;
+        change(&conn, save_id)
+    })
+    .await
+}
+
+/// Sets what the save's individual training follows: `planner` or `development`.
+#[tauri::command]
+pub async fn set_training_basis(basis: String, db: State<'_, Db>) -> Result<(), String> {
+    let basis = TrainingBasis::parse(&basis)?;
+    change_development(db, move |conn, save_id| {
+        development::set_training_basis(conn, save_id, basis)
+    })
+    .await
+}
+
+/// Sets the oldest age at which the save's players still count as developing.
+#[tauri::command]
+pub async fn set_development_max_age(max_age: i64, db: State<'_, Db>) -> Result<(), String> {
+    change_development(db, move |conn, save_id| {
+        development::set_max_age(conn, save_id, max_age)
+    })
+    .await
+}
+
+/// Gives a player at the managed club a development slot in place of the suggested one, or
+/// returns him to the suggestion when `lane_id` is absent.
+#[tauri::command]
+pub async fn set_development_slot(
+    player_uid: i64,
+    lane_id: Option<String>,
+    db: State<'_, Db>,
+) -> Result<(), String> {
+    change_development(db, move |conn, save_id| {
+        let snapshot_id = depth_service::current_snapshot_id(conn, save_id)?
+            .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
+        development::choose_slot(conn, save_id, snapshot_id, player_uid, lane_id.as_deref())
+    })
+    .await
+}
+
+/// Sets what Optimize squads builds for the save: `strongest` or `development`.
+#[tauri::command]
+pub async fn set_planner_optimize_for(
+    optimize_for: String,
+    db: State<'_, Db>,
+) -> Result<(), String> {
+    let optimize_for = OptimizeFor::parse(&optimize_for)?;
+    change_development(db, move |conn, save_id| {
+        development::set_optimize_for(conn, save_id, optimize_for)
+    })
+    .await
+}
+
+/// A player at the managed club who is developing towards a slot.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerDevelopmentPlayerDto {
+    pub player_uid: i64,
+    /// His development slot and the slots that train the same.
+    pub lane_ids: Vec<String>,
+}
+
+/// What Optimize squads builds for the save, and where its young players are growing.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerDevelopmentDto {
+    /// `strongest` or `development`.
+    pub optimize_for: &'static str,
+    /// The oldest age at which a player still counts as developing.
+    pub max_age: i64,
+    pub players: Vec<PlannerDevelopmentPlayerDto>,
+}
+
+/// The save's Optimize goal and its players' development slots, for the Planner board.
+#[tauri::command]
+pub async fn get_planner_development(db: State<'_, Db>) -> Result<PlannerDevelopmentDto, String> {
+    let db = db.inner().clone();
+    blocking::run(move || read_planner_development(&db)).await
+}
+
+pub(super) fn read_planner_development(db: &Db) -> Result<PlannerDevelopmentDto, String> {
+    let conn = db.read()?;
+    let save_id = service::active_save_id(&conn)?;
+    let settings = development::load_settings(&conn, save_id)?;
+    let mut players = Vec::new();
+    if let (true, Some(snapshot_id)) = (
+        depth_service::depth_exists(&conn, save_id)?,
+        depth_service::current_snapshot_id(&conn, save_id)?,
+    ) {
+        let tactic = tactic_service::get_tactic(&conn, save_id)?;
+        let slots =
+            development::development_slots(&conn, save_id, snapshot_id, &tactic, settings.max_age)?;
+        for (player_uid, lane_index) in slots.lanes() {
+            players.push(PlannerDevelopmentPlayerDto {
+                player_uid,
+                lane_ids: tactic
+                    .lanes
+                    .iter()
+                    .filter(|lane| same_training(lane, &tactic.lanes[lane_index]))
+                    .map(|lane| lane.lane_id.clone())
+                    .collect(),
+            });
+        }
+        players.sort_by_key(|player| player.player_uid);
+    }
+    Ok(PlannerDevelopmentDto {
+        optimize_for: settings.optimize_for.as_str(),
+        max_age: settings.max_age,
+        players,
     })
 }
 

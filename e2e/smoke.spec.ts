@@ -5016,6 +5016,42 @@ test.describe("application smoke", () => {
     await expect(trigger).toBeFocused();
   });
 
+  test("training follows development slots once the save trains by them", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true, squadOverview: true });
+    await page.goto("/my-club?view=training");
+
+    const main = page.getByRole("main");
+    const winger = main.getByRole("row", { name: /Converted Winger/ });
+    await expect(winger).toContainText("Inside Winger MR");
+    await main
+      .getByRole("button", { name: "Development slot", exact: true })
+      .click();
+
+    // He plays the wing and trains for the slot his potential stands out in.
+    await expect(
+      main.getByText("Developing towards", { exact: true }),
+    ).toBeVisible();
+    await expect(winger).toContainText("Channel Forward ST");
+    await expect(winger).toContainText("Away from slot");
+    await expect(
+      main.getByRole("button", { name: "DCL, DCR: 0 players" }),
+    ).toBeVisible();
+    // A player in no squad trains his development slot too.
+    await expect(
+      main.getByRole("row", { name: /Unread Youngster/ }),
+    ).toContainText("Inside Full-Back DL");
+
+    // Choosing the slot he plays keeps the choice and ends the split.
+    await winger
+      .getByRole("combobox", { name: "Development slot for Converted Winger" })
+      .selectOption("right_winger");
+    await expect(winger).toContainText("Your choice");
+    await expect(winger).not.toContainText("Away from slot");
+    await expect(winger).toContainText("Inside Winger MR");
+  });
+
   test("planner team management renames, removes, and restores a populated team", async ({
     page,
   }) => {

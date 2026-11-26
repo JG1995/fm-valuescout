@@ -156,6 +156,9 @@ export function PlannerTacticEditor({
         queryClient.invalidateQueries({
           queryKey: plannerKeys.roleReferences(),
         }),
+        queryClient.invalidateQueries({
+          queryKey: plannerKeys.developments(),
+        }),
       ]);
       await onSaved?.();
     },

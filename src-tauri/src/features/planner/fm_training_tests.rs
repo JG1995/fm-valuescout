@@ -4,13 +4,14 @@ use rusqlite::{params, Connection};
 
 use super::commands::read_squad_fm_training;
 use super::depth::{assign_player, get_depth, PlannerTeam};
+use super::development::{choose_slot, set_training_basis, TrainingBasis};
 use super::fm_training::{
     apply_fm_training, plan_fm_training, FmTrainingFailure, LearningPosition, LOAD_DATA_FIRST,
 };
 use super::squad::{list_squad_players, SquadSortDir, SquadSortField};
 use super::test_support::{
-    current_snapshot_id, loan_out, open_with_snapshot, seed_players, set_player_age,
-    set_player_attributes, set_player_positions, team_strings,
+    current_snapshot_id, loan_out, open_with_snapshot, seed_players, set_lane_scores,
+    set_player_age, set_player_attributes, set_player_positions, team_strings,
 };
 use crate::db::Db;
 use crate::features::memory_read::service::{TrainingOutcome, TrainingResponse};
@@ -77,21 +78,22 @@ fn squad_column(conn: &Connection, save_id: i64) -> Vec<(i64, Option<String>)> {
 }
 
 /// The position, in-possession role, and out-of-possession role a player trains; `None` for a
-/// player in no slot.
+/// player whose roles stay as they are.
 type TrainedRoles = Option<(String, String, String)>;
 
 fn trained_roles(conn: &Connection, save_id: i64) -> Vec<(i64, TrainedRoles)> {
     plan_fm_training(conn, save_id)
         .expect("plan training")
+        .changes
         .into_iter()
         .map(|planned| {
             (
                 planned.player_uid,
-                planned.slot.map(|slot| {
+                planned.target.map(|target| {
                     (
-                        slot.roles.position,
-                        slot.roles.in_possession,
-                        slot.roles.out_of_possession,
+                        target.roles.position,
+                        target.roles.in_possession,
+                        target.roles.out_of_possession,
                     )
                 }),
             )
@@ -111,7 +113,9 @@ fn roles(position: &str, in_possession: &str, out_of_possession: &str) -> Traine
 fn plan_trains_each_slots_roles_and_the_squad_overviews_focus() {
     let (_temp_dir, conn, save_id) = squad();
 
-    let plan = plan_fm_training(&conn, save_id).expect("plan training");
+    let plan = plan_fm_training(&conn, save_id)
+        .expect("plan training")
+        .changes;
 
     // 81 is on loan, so he trains with the borrower.
     let mut focuses = plan
@@ -139,19 +143,164 @@ fn plan_trains_each_slots_roles_and_the_squad_overviews_focus() {
             slot.team,
             slot.team_name.as_str(),
             slot.string_name.as_str(),
+            slot.lane_id.as_str(),
             slot.ip_position.as_str(),
             slot.oop_position.as_str(),
-            slot.in_possession.as_str(),
         ),
         (
             PlannerTeam::Senior,
             "Senior",
             "Starter",
+            "right_winger",
             "AMR",
-            "MR",
-            "Winger"
+            "MR"
         )
     );
+    // A save trains by Planner slot until it is told otherwise.
+    let target = plan[1].target.as_ref().expect("77 trains his slot");
+    assert_eq!(
+        (
+            target.lane_id.as_str(),
+            target.in_possession.as_str(),
+            target.development
+        ),
+        ("right_winger", "Winger", false)
+    );
+}
+
+/// The squad with a winger's role scores, training by development.
+fn developing_squad() -> (tempfile::TempDir, Connection, i64) {
+    let (temp_dir, conn, save_id) = squad();
+    for uid in [77, 78, 79, 80] {
+        set_lane_scores(&conn, save_id, uid, "right_winger", 60, 80);
+    }
+    set_training_basis(&conn, save_id, TrainingBasis::Development).expect("train by development");
+    (temp_dir, conn, save_id)
+}
+
+/// 78 keeps goal for the Planner but is a winger, 77 plays where he develops, 79 is in no slot,
+/// and 80 is too old to develop.
+#[test]
+fn training_by_development_follows_each_young_players_development_slot() {
+    let (_temp_dir, conn, save_id) = developing_squad();
+    let winger = roles("AMR", "Winger", "Tracking Wide Midfielder");
+
+    let plan = plan_fm_training(&conn, save_id).expect("plan training");
+
+    assert_eq!(plan.basis, TrainingBasis::Development);
+    assert_eq!(plan.development_max_age, 23);
+    assert_eq!(
+        trained_roles(&conn, save_id),
+        vec![
+            (78, winger.clone()),
+            (77, winger.clone()),
+            (79, winger),
+            (80, None),
+        ]
+    );
+    let development_targets = plan
+        .changes
+        .iter()
+        .map(|planned| {
+            planned
+                .target
+                .as_ref()
+                .map(|target| (target.lane_id.as_str(), target.development))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        development_targets,
+        vec![
+            Some(("right_winger", true)),
+            // He already plays the slot he develops in.
+            Some(("right_winger", false)),
+            Some(("right_winger", true)),
+            None,
+        ]
+    );
+
+    // 78 still plays in goal, where he has no familiarity, and his slot says so.
+    let keeper = &plan.changes[0];
+    let slot = keeper.slot.as_ref().expect("78 is in a slot");
+    assert_eq!(slot.lane_id, "goalkeeper");
+    assert_eq!(
+        slot.learning,
+        Some(LearningPosition {
+            position: "GK".to_string(),
+            familiarity: 0,
+            out_of_possession: false,
+        })
+    );
+    assert_eq!(
+        keeper.target.as_ref().expect("78 trains").learning,
+        None,
+        "he is fully familiar with the wing"
+    );
+    let development = keeper.development.as_ref().expect("78 develops");
+    assert_eq!(development.lane_id.as_deref(), Some("right_winger"));
+    assert_eq!(
+        development.suggested_lane_id.as_deref(),
+        Some("right_winger")
+    );
+    assert!(!development.locked);
+    assert!(plan.changes[3].development.is_none(), "80 is 30");
+
+    // The focus is still the Squad overview's, which now reads the development slot: 78 gets
+    // the winger's focus that 77 has.
+    let mut focuses = plan
+        .changes
+        .iter()
+        .map(|planned| (planned.player_uid, planned.focus.clone()))
+        .collect::<Vec<_>>();
+    focuses.sort();
+    assert_eq!(focuses, squad_column(&conn, save_id));
+    assert_eq!(focuses[1].1, focuses[0].1);
+}
+
+#[test]
+fn a_chosen_development_slot_trains_a_position_the_player_has_yet_to_learn() {
+    let (_temp_dir, conn, save_id) = developing_squad();
+    // The left wing asks for the winger's roles at positions he has never played.
+    choose_slot(
+        &conn,
+        save_id,
+        current_snapshot_id(&conn, save_id),
+        79,
+        Some("left_winger"),
+    )
+    .expect("choose the left wing");
+
+    let planned = plan_fm_training(&conn, save_id)
+        .expect("plan training")
+        .changes
+        .into_iter()
+        .find(|planned| planned.player_uid == 79)
+        .expect("79 is planned");
+
+    let target = planned.target.expect("79 trains");
+    assert_eq!(
+        (
+            target.lane_id.as_str(),
+            target.roles.position.as_str(),
+            target.development
+        ),
+        ("left_winger", "AML", true)
+    );
+    assert_eq!(
+        target.learning,
+        Some(LearningPosition {
+            position: "AML".to_string(),
+            familiarity: 0,
+            out_of_possession: false,
+        })
+    );
+    let development = planned.development.expect("79 develops");
+    assert_eq!(development.lane_id.as_deref(), Some("left_winger"));
+    assert_eq!(
+        development.suggested_lane_id.as_deref(),
+        Some("right_winger")
+    );
+    assert!(development.locked);
 }
 
 /// What 77 trains in the right-winger slot with these positions, and the position he is learning.
@@ -163,17 +312,18 @@ fn winger_training(
     set_player_positions(conn, save_id, 77, positions_json);
     let planned = plan_fm_training(conn, save_id)
         .expect("plan training")
+        .changes
         .into_iter()
         .find(|planned| planned.player_uid == 77)
         .expect("77 is planned");
-    let slot = planned.slot.expect("77 is in a slot");
+    let target = planned.target.expect("77 trains his slot");
     (
         Some((
-            slot.roles.position,
-            slot.roles.in_possession,
-            slot.roles.out_of_possession,
+            target.roles.position,
+            target.roles.in_possession,
+            target.roles.out_of_possession,
         )),
-        slot.learning,
+        target.learning,
     )
 }
 
@@ -249,6 +399,7 @@ fn apply_sends_fm_ids_and_reports_what_fm_did_not_take() {
     set_player_positions(&conn, save_id, 77, r#"{"AMR": 20, "MR": 9}"#);
     let focus_ids = plan_fm_training(&conn, save_id)
         .expect("plan")
+        .changes
         .iter()
         .map(|planned| {
             planned
@@ -412,6 +563,12 @@ fn a_save_without_a_tactic_sets_only_focuses() {
 
     let plan = plan_fm_training(&conn, save_id).expect("plan without a tactic");
 
-    assert!(plan.iter().all(|planned| planned.slot.is_none()));
-    assert!(plan.iter().all(|planned| planned.focus.is_none()));
+    assert!(plan.lanes.is_empty());
+    assert!(plan.changes.iter().all(|planned| planned.slot.is_none()));
+    assert!(plan.changes.iter().all(|planned| planned.target.is_none()));
+    assert!(plan
+        .changes
+        .iter()
+        .all(|planned| planned.development.is_none()));
+    assert!(plan.changes.iter().all(|planned| planned.focus.is_none()));
 }

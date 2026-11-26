@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension, Row};
 
-use super::{fit::tactic_adjusted_score, suggested_training, tactic};
+use super::{development, fit::tactic_adjusted_score, suggested_training, tactic};
 
 use crate::features::managed_club::service::{
     managed_club_owned_player_sql, managed_club_player_sql,
@@ -209,17 +209,27 @@ pub fn list_squad_players(
     } else {
         Some(tactic::load_tactic(conn, save_id)?)
     };
-    let assignments = match tactic {
+    // The lane each player trains: his Planner slot, or his development slot when the save
+    // trains by development.
+    let assignments = match &tactic {
         None => HashMap::new(),
-        Some(_) => conn
-            .prepare("SELECT player_uid, lane_id FROM planner_assignments WHERE save_id = ?1")
-            .map_err(|error| error.to_string())?
-            .query_map(params![save_id], |row| {
-                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-            })
-            .map_err(|error| error.to_string())?
-            .collect::<Result<HashMap<_, _>, _>>()
-            .map_err(|error| error.to_string())?,
+        Some(tactic) => {
+            let mut lanes = conn
+                .prepare("SELECT player_uid, lane_id FROM planner_assignments WHERE save_id = ?1")
+                .map_err(|error| error.to_string())?
+                .query_map(params![save_id], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|error| error.to_string())?
+                .collect::<Result<HashMap<_, _>, _>>()
+                .map_err(|error| error.to_string())?;
+            for (player_uid, lane_index) in
+                development::training_lanes(conn, save_id, snapshot_id, tactic)?
+            {
+                lanes.insert(player_uid, tactic.lanes[lane_index].lane_id.clone());
+            }
+            lanes
+        }
     };
 
     let limit = limit.clamp(1, MAX_SQUAD_PAGE_LIMIT);

@@ -250,6 +250,45 @@ pub(crate) fn prepare_player_derived(
     Ok((projected_json, current_scores, potential_scores))
 }
 
+/// How many times this process has written or deleted compact rows, by database file.
+fn score_revisions() -> MutexGuard<'static, HashMap<String, u64>> {
+    static REVISIONS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+    REVISIONS
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The connection's database file, the same for its writer and its readers. Connections
+/// without a file share one name.
+fn scores_database(conn: &Connection) -> String {
+    conn.path()
+        .filter(|path| !path.is_empty())
+        .and_then(|path| std::fs::canonicalize(path).ok())
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// A number that changes whenever a player's role scores in `conn`'s database are written or
+/// deleted. Every such write goes through this module, so a result derived from many players'
+/// scores, such as the Planner's slot rankings, can be kept until this changes, across the
+/// writes that leave the scores alone.
+///
+/// The number advances when the write runs, not when it commits. A reader that derives its
+/// result between the two keeps the scores from before the write under the new number, until
+/// the next write. For the one-player rewrite a boost makes, that result is then one player
+/// out of date.
+pub(crate) fn scores_revision(conn: &Connection) -> u64 {
+    score_revisions()
+        .get(&scores_database(conn))
+        .copied()
+        .unwrap_or(0)
+}
+
+fn scores_changed(conn: &Connection) {
+    *score_revisions().entry(scores_database(conn)).or_default() += 1;
+}
+
 /// Borrowed persistence implementation: inserts or replaces one compact row per player
 /// without cloning the 158-value score vectors. Accepts any iterator over borrowed
 /// slices, such as a Load Data preparation's `u8` scores or a rebuild's `i64` scores.
@@ -285,6 +324,7 @@ where
     );
     let mut statement = tx.prepare(&sql).map_err(|error| error.to_string())?;
 
+    scores_changed(tx);
     for (uid, current_scores, potential_scores) in rows {
         if current_scores.len() != roles.len() || potential_scores.len() != roles.len() {
             return Err("Compact player row has the wrong role count".to_string());
@@ -333,6 +373,7 @@ pub(crate) fn persist_rows(
 
 /// Deletes every compact row for one snapshot.
 pub(crate) fn clear_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
+    scores_changed(tx);
     tx.execute(
         "DELETE FROM player_role_metrics WHERE snapshot_id = ?1",
         [snapshot_id],
@@ -346,6 +387,7 @@ pub(crate) fn clear_non_current_snapshots(
     tx: &Transaction<'_>,
     save_id: i64,
 ) -> Result<(), String> {
+    scores_changed(tx);
     tx.execute(
         "DELETE FROM player_role_metrics
          WHERE snapshot_id IN (
