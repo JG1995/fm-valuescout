@@ -85,15 +85,15 @@ export function FilterRulePopover({
   // Who a percentile or Moneyball score ranks the player against.
   const peerNote =
     view === "slot" && percentile
-      ? "Ranked among players with 450+ minutes rated 16 or higher in the position families of this slot's positions."
+      ? "Ranked among players with 450+ minutes rated 15 or higher in the position families of this slot's positions."
       : moneyballScore
-        ? "Scored among the role's position family: players with 450+ minutes rated 16 or higher there."
+        ? "Scored among the role's position family: players with 450+ minutes rated 15 or higher there."
         : statisticPercentile
           ? `${
               comparison === undefined || comparison === "own"
                 ? "Ranked among the peers of each player's own position"
                 : `Ranked among ${moneyballComparisonLabel(comparison).toLowerCase()}`
-            }, with 450+ minutes and a rating of 16 or higher there. Change this with Percentiles vs in the toolbar.`
+            }, with 450+ minutes and a rating of 15 or higher there. Change this with Percentiles vs in the toolbar.`
           : undefined;
 
   useEffect(() => {

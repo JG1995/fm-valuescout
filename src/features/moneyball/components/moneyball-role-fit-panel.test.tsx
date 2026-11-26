@@ -118,7 +118,7 @@ describe("MoneyballRoleFitPanel", () => {
     ).toBeInTheDocument();
     expect(
       within(highRow).getByText(
-        "Weighted percentile score among central midfielders with 450+ minutes rated 16 or higher.",
+        "Weighted percentile score among central midfielders with 450+ minutes rated 15 or higher.",
       ),
     ).toBeInTheDocument();
     expect(within(highRow).getByText(/Higher is better/)).toBeInTheDocument();
@@ -191,7 +191,7 @@ describe("MoneyballRoleFitPanel", () => {
     await user.click(within(panel).getByText("Scored Role"));
     expect(
       within(panel).getByText(
-        "Weighted percentile score among central midfielders with 450+ minutes rated 16 or higher, moved −12 for league strength.",
+        "Weighted percentile score among central midfielders with 450+ minutes rated 15 or higher, moved −12 for league strength.",
       ),
     ).toBeInTheDocument();
 
@@ -207,7 +207,7 @@ describe("MoneyballRoleFitPanel", () => {
     );
     expect(
       within(panel).getByText(
-        "Weighted percentile score among central midfielders with 450+ minutes rated 16 or higher.",
+        "Weighted percentile score among central midfielders with 450+ minutes rated 15 or higher.",
       ),
     ).toBeInTheDocument();
     expect(within(panel).queryByText(/League strength/)).toBeNull();

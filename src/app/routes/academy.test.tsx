@@ -724,7 +724,7 @@ describe("academy route", () => {
       academyMember({
         playerUid: 77,
         lastKnownName: "Complete prospect",
-        positions: { AMR: 20, MR: 17, MC: 16, AMC: 15, GK: 0, SW: null },
+        positions: { AMR: 20, MR: 17, MC: 15, AMC: 14, GK: 0, SW: null },
       }),
     ]);
     setAcademyCandidates([
@@ -732,7 +732,7 @@ describe("academy route", () => {
         playerUid: 78,
         name: "Candidate prospect",
         age: 18,
-        positions: { AMR: 20, MR: 17, MC: 16, AMC: 15, GK: 0, SW: null },
+        positions: { AMR: 20, MR: 17, MC: 15, AMC: 14, GK: 0, SW: null },
         currentClub: "Metro FC",
       },
     ]);

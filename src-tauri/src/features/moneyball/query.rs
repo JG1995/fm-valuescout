@@ -477,11 +477,11 @@ mod tests {
             &statistics_with("goals", Some(10.0)),
             Some("{}"),
         );
-        // Peers of the winger family are rated 16 or more at AML or AMR with 450+ minutes.
+        // Peers of the winger family are rated 15 or more at AML or AMR with 450+ minutes.
         for (uid, positions, goals, minutes) in [
             (78, r#"{"AMR":20}"#, 20.0, 1_500),
-            (79, r#"{"AML":16}"#, 100.0, 450),
-            (80, r#"{"AMR":15}"#, 0.0, 1_500),
+            (79, r#"{"AML":15}"#, 100.0, 450),
+            (80, r#"{"AMR":14}"#, 0.0, 1_500),
             (81, r#"{"AMR":20}"#, 0.0, 449),
         ] {
             insert_player(&conn, snapshot_id, uid, positions);

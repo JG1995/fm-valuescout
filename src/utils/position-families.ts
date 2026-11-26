@@ -1,6 +1,6 @@
 /**
  * The position families Moneyball ranks statistics within. A family's peers
- * are the players with 450+ minutes this season rated 16+ at one of its
+ * are the players with 450+ minutes this season rated 15+ at one of its
  * positions. IDs match the Rust role catalog's `position_family`.
  */
 export const POSITION_FAMILIES = [

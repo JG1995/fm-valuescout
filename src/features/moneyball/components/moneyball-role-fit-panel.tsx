@@ -102,7 +102,7 @@ function RoleExplanation({
           <p className="pb-1 text-body-sm text-on-surface-variant">
             Weighted percentile score among{" "}
             {positionFamilyLabel(role.positionFamily).toLowerCase()} with 450+
-            minutes rated 16 or higher
+            minutes rated 15 or higher
             {leagueShift === 0
               ? "."
               : `, moved ${signedPoints(leagueShift)} for league strength.`}

@@ -273,7 +273,7 @@ pub(super) fn foot_matches(player_foot: &str, preferred_foot: &str) -> bool {
 }
 
 /// The familiarity from which a position costs a player nothing.
-pub(super) const FULL_FAMILIARITY: i64 = 16;
+pub(crate) const FULL_FAMILIARITY: i64 = 15;
 
 /// The player's familiarity with a placement's position, however low.
 pub(super) fn position_familiarity(

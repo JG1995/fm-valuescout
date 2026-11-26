@@ -881,14 +881,14 @@ fn a_percentile_filter_ranks_a_signing_among_the_slots_position_peers() {
         player(11, "Average Target", OTHER_CLUB, "DC"),
         player(12, "Target Without Stats", OTHER_CLUB, "DC"),
         player(13, "Peer Centre Back", OTHER_CLUB, "DC"),
-        player(14, "Peer At Sixteen", OTHER_CLUB, "DM"),
-        player(15, "Striker At Fifteen", OTHER_CLUB, "ST"),
+        player(14, "Peer At Fifteen", OTHER_CLUB, "DM"),
+        player(15, "Striker At Fourteen", OTHER_CLUB, "ST"),
     ]);
     for (uid, score) in [(1, 50), (2, 50), (10, 70), (11, 70), (12, 70)] {
         fixture.set_slot_score(uid, "left_centre_back", score);
     }
-    fixture.set_player_column(14, "positions_json", r#"{"DM": 20, "DC": 16}"#);
-    fixture.set_player_column(15, "positions_json", r#"{"ST": 20, "DC": 15}"#);
+    fixture.set_player_column(14, "positions_json", r#"{"DM": 20, "DC": 15}"#);
+    fixture.set_player_column(15, "positions_json", r#"{"ST": 20, "DC": 14}"#);
     for (uid, progressive_passes) in [(10, 40.0), (11, 20.0), (13, 10.0), (14, 5.0), (15, 100.0)] {
         fixture.set_season_stats(uid, 50.0, &[]);
         fixture.set_statistics(uid, &[("progressive_passes", progressive_passes)]);
@@ -909,8 +909,8 @@ fn a_percentile_filter_ranks_a_signing_among_the_slots_position_peers() {
         },
     );
 
-    // The peers are 5, 10, 20, and 40: the striker's familiarity of 15 leaves him out, and
-    // the 16 of the defensive midfielder brings him in. 20 then ranks at the 67th percentile;
+    // The peers are 5, 10, 20, and 40: the striker's familiarity of 14 leaves him out, and
+    // the 15 of the defensive midfielder brings him in. 20 then ranks at the 67th percentile;
     // with the striker, or without the midfielder, it would rank at the 50th. The target
     // without season statistics cannot be ranked.
     let mut recommended = signings

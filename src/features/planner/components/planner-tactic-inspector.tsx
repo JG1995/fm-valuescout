@@ -512,7 +512,7 @@ export function PlannerTacticInspector({
         <div {...panelProps("scoring")}>
           <SectionHeading
             count={`${selectedLane.customMetricKeys.length}/${MAX_SLOT_METRICS}`}
-            hint={`The mean of each metric's percentile among ${slotPeers(selectedLane)} with 450+ minutes rated 16 or higher. Both phases count; the IP/OOP weight does not apply.`}
+            hint={`The mean of each metric's percentile among ${slotPeers(selectedLane)} with 450+ minutes rated 15 or higher. Both phases count; the IP/OOP weight does not apply.`}
           >
             Moneyball Metrics
           </SectionHeading>
@@ -525,7 +525,7 @@ export function PlannerTacticInspector({
         <div {...panelProps("recruitment")}>
           <SectionHeading
             count={`${selectedLane.recruitmentFilters.length}/${MAX_RECRUITMENT_FILTERS}`}
-            hint={`Recommended signings must pass every filter; your own players are never filtered. Percentiles rank among ${slotPeers(selectedLane)} with 450+ minutes rated 16 or higher.`}
+            hint={`Recommended signings must pass every filter; your own players are never filtered. Percentiles rank among ${slotPeers(selectedLane)} with 450+ minutes rated 15 or higher.`}
           >
             Recruitment Filters
           </SectionHeading>
