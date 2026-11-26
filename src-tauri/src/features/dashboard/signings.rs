@@ -7,9 +7,10 @@ use std::collections::{BTreeMap, HashSet};
 use rusqlite::{params_from_iter, types::Value, Connection, Row};
 
 use crate::features::managed_club::service::{managed_club_player_sql, managed_club_sql};
+use crate::features::moneyball::columns::StatisticColumns;
 pub(crate) use crate::features::moneyball::comparison::MIN_SEASON_MINUTES;
 use crate::features::moneyball::comparison::{
-    scan_in_parallel, scan_statistics, GroupsSource, ResolvedGroups,
+    scan_in_parallel, statistic_index, GroupsSource, ResolvedGroups,
 };
 use crate::features::moneyball::kept_stats::{
     kept_stats_snapshots, stats_join_sql, STATS_DIVISION_SQL,
@@ -17,7 +18,8 @@ use crate::features::moneyball::kept_stats::{
 use crate::features::moneyball::league_strength::LeagueAdjustment;
 use crate::features::moneyball::role_catalog::definition_for_attribute_role;
 use crate::features::planner::fit::{
-    custom_metrics_lane_score, moneyball_roles_lane_score, slot_group, tactic_adjusted_score,
+    custom_metrics_lane_score, lane_statistic_keys, moneyball_roles_lane_score, slot_group,
+    tactic_adjusted_score,
 };
 use crate::features::planner::optimizer::{allocate_lanes, OptimizerCandidate};
 use crate::features::planner::tactic::{
@@ -201,7 +203,9 @@ struct CandidateRow {
     role_scores: Vec<Option<u8>>,
     /// The minutes of his statistics row, when the query reads them.
     minutes: Option<i64>,
-    statistics_json: Option<String>,
+    /// The statistics the request scores or ranks, when the query reads them and he has a
+    /// statistics row.
+    statistics: Option<Box<[f64]>>,
     /// Moneyball mode: the league he played his statistics in.
     division: Option<String>,
     /// The snapshot his statistics come from, when the query reads them.
@@ -656,10 +660,7 @@ fn load_players(
             format!("players{}", player_metrics_join("players", true, false)),
         ),
         ScoreMode::Moneyball => (
-            format!(
-                "moneyball.minutes, moneyball.statistics_json, {STATS_DIVISION_SQL},
-                 moneyball.snapshot_id"
-            ),
+            format!("moneyball.minutes, {STATS_DIVISION_SQL}, moneyball.snapshot_id"),
             format!("players{stats_join}"),
         ),
     };
@@ -744,7 +745,7 @@ fn load_players(
     let lane_count = tactic.lanes.len();
     let first_filter_column = 8 + match mode {
         ScoreMode::General => lane_count * 2,
-        ScoreMode::Moneyball => 4,
+        ScoreMode::Moneyball => 3,
     };
     let mut extra_columns = Vec::new();
     if let Some(filters) = &filters {
@@ -761,26 +762,42 @@ fn load_players(
     if mode == ScoreMode::Moneyball && filters.as_ref().is_some_and(SlotFilters::uses_role_scores) {
         from_sql.push_str(&player_metrics_join("players", true, false));
     }
-    // Where each statistics value is read: Moneyball mode's score columns hold them all, and
-    // General mode adds only the ones it needs.
+    // Where the statistics row's other values are read: Moneyball mode's score columns hold
+    // them all, and General mode adds only the ones it needs.
     let mut extra_column = |needed: bool, column: &str| {
         needed.then(|| {
             extra_columns.push(column.to_string());
             first_filter_column + extra_columns.len() - 1
         })
     };
-    let ranks_statistics = filters.as_ref().is_some_and(SlotFilters::ranks_statistics);
-    let (minutes_column, statistics_column, source_column) = match mode {
+    let (minutes_column, source_column) = match mode {
         ScoreMode::General => (
             extra_column(applies_minimum, "moneyball.minutes"),
-            extra_column(ranks_statistics, "moneyball.statistics_json"),
             extra_column(general_reads_stats, "moneyball.snapshot_id"),
         ),
-        ScoreMode::Moneyball => (Some(8), Some(9), Some(11)),
+        ScoreMode::Moneyball => (Some(8), Some(10)),
     };
+    // The statistics the slots' Moneyball scores and percentile rules read, after every other
+    // column. A key outside the catalog has no column and ranks nobody.
+    let mut statistic_keys = filters
+        .iter()
+        .flat_map(SlotFilters::ranked_statistics)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if mode == ScoreMode::Moneyball {
+        statistic_keys.extend(tactic.lanes.iter().flat_map(lane_statistic_keys));
+    }
+    let statistics = StatisticColumns::of_keys(
+        statistic_keys
+            .iter()
+            .map(String::as_str)
+            .filter(|key| statistic_index(key).is_some()),
+    )?;
+    let first_statistic_column = first_filter_column + extra_columns.len();
     let filter_columns = extra_columns
         .iter()
         .map(|column| format!(", {column}"))
+        .chain([statistics.appended_sql("moneyball")])
         .collect::<String>();
     // The club's order settles ties when its lineup is allocated. Candidates are ranked by
     // `by_improvement`, a total order, so sorting the many realistic signings is left out.
@@ -805,6 +822,7 @@ fn load_players(
         column.map_or(Ok(None), |column| row.get::<_, Option<i64>>(column))
     };
     let read = |row: &Row<'_>| {
+        let source_id = optional(row, source_column)?;
         Ok(CandidateRow {
             uid: row.get(0)?,
             name: row.get(1)?,
@@ -821,13 +839,15 @@ fn load_players(
                 ScoreMode::Moneyball => Vec::new(),
             },
             minutes: optional(row, minutes_column)?,
-            statistics_json: statistics_column
-                .map_or(Ok(None), |column| row.get::<_, Option<String>>(column))?,
+            statistics: source_id
+                .filter(|_| statistics.len() > 0)
+                .map(|_| statistics.read(row, first_statistic_column))
+                .transpose()?,
             division: match mode {
                 ScoreMode::General => None,
-                ScoreMode::Moneyball => row.get(10)?,
+                ScoreMode::Moneyball => row.get(9)?,
             },
-            source_id: optional(row, source_column)?,
+            source_id,
             sql_passes: filters
                 .as_ref()
                 .map(|filters| filters.sql_passes(row, first_filter_column))
@@ -841,11 +861,7 @@ fn load_players(
             .unwrap_or(&sources[0]);
         let positions = serde_json::from_str::<BTreeMap<String, Option<i64>>>(&row.positions_json)
             .map_err(|error| error.to_string())?;
-        let statistics = row
-            .statistics_json
-            .as_deref()
-            .map(scan_statistics)
-            .transpose()?;
+        let statistics = row.statistics;
         let lane_scores = match mode {
             ScoreMode::General => tactic
                 .lanes

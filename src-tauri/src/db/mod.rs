@@ -35,6 +35,11 @@ const JOURNAL_SIZE_LIMIT_BYTES: i64 = 64 * 1024 * 1024;
 /// bundled SQLite's `SQLITE_MAX_MMAP_SIZE` from its 2 GiB default to this; a build without it
 /// clamps the mapping, and reads past it go through the page cache.
 const MMAP_SIZE_BYTES: i64 = 64 * 1024 * 1024 * 1024;
+/// The migration that moved the season statistics from a JSON object into columns, which
+/// left most of the pages of a large database file free.
+const SEASON_STATISTICS_REWRITE_VERSION: i32 = 66;
+/// The least free space in the database file that is worth rewriting the file to return.
+const WORTH_RETURNING_BYTES: i64 = 256 * 1024 * 1024;
 
 /// The application database: one writer and, for a database file, a pool of read-only
 /// readers. Clones share both.
@@ -404,8 +409,14 @@ pub fn open(db_path: &Path) -> Result<Db, String> {
     // WAL that an earlier session left behind, so the migrations and every later read use the
     // database file; the second folds in what the migrations wrote.
     checkpoint_at_open(&conn);
+    let version_before: i32 = conn
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|error| error.to_string())?;
     migrations::apply(&conn).map_err(|error| error.to_string())?;
     checkpoint_at_open(&conn);
+    if (1..SEASON_STATISTICS_REWRITE_VERSION).contains(&version_before) {
+        return_free_space(&conn, WORTH_RETURNING_BYTES);
+    }
 
     release_write_cache(&conn);
 
@@ -428,6 +439,42 @@ fn checkpoint_at_open(conn: &Connection) {
         ),
         Ok(()) => {}
         Err(error) => log::warn!("database checkpoint failed at startup: {error}"),
+    }
+}
+
+/// Rewrites the database file without its free pages when they hold at least `worth_bytes`,
+/// which shrinks the file. SQLite otherwise keeps a file at its largest size and only reuses
+/// the pages. No other connection may be open: a file that one of them maps cannot shrink.
+///
+/// The rewrite takes minutes for gigabytes, and needs about twice the remaining data in free
+/// disk space: once in the temporary directory and once beside the database. A failure
+/// leaves the database as it was, free pages included.
+fn return_free_space(conn: &Connection, worth_bytes: i64) {
+    let pragma = |name: &str| conn.pragma_query_value(None, name, |row| row.get::<_, i64>(0));
+    let free_bytes = pragma("freelist_count")
+        .and_then(|pages| Ok(pages * pragma("page_size")?))
+        .unwrap_or(0);
+    if free_bytes < worth_bytes {
+        return;
+    }
+    log::info!(
+        "returning {} MiB of free database pages to the file system",
+        free_bytes / (1024 * 1024)
+    );
+    let started = Instant::now();
+    // This connection's own mapping would keep the file from shrinking too, and
+    // `temp_store = MEMORY` would hold the rewritten copy in memory.
+    let rewritten = conn.execute_batch("PRAGMA mmap_size = 0; PRAGMA temp_store = FILE; VACUUM");
+    let restored = conn.pragma_update(None, "temp_store", "MEMORY");
+    // The rewrite is in the WAL: the file shrinks when the checkpoint folds it in.
+    checkpoint_at_open(conn);
+    drop_mapping(conn);
+    match rewritten.and(restored) {
+        Ok(()) => log::info!(
+            "database free pages returned in {} s",
+            started.elapsed().as_secs()
+        ),
+        Err(error) => log::warn!("database free pages were not returned: {error}"),
     }
 }
 
@@ -896,6 +943,54 @@ mod tests {
         checkpoint_wal(&db.0.lock().expect("lock writer")).expect("checkpoint");
 
         assert_eq!(std::fs::metadata(&wal).expect("wal file").len(), 0);
+    }
+
+    #[test]
+    fn free_space_worth_returning_shrinks_the_database_file() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let path = temp_dir.path().join(APP_DB_FILE);
+        // The writer alone, as `open` has it before it opens the readers.
+        let conn = Connection::open(&path).expect("open db");
+        configure_writer(&conn).expect("configure writer");
+        conn.execute_batch(
+            "CREATE TABLE probe (value INTEGER NOT NULL);
+             INSERT INTO probe (value) VALUES (7);
+             CREATE TABLE filler (body BLOB NOT NULL);
+             WITH RECURSIVE counter(n) AS (
+                 SELECT 1 UNION ALL SELECT n + 1 FROM counter WHERE n < 2000
+             )
+             INSERT INTO filler SELECT zeroblob(4000) FROM counter;
+             DROP TABLE filler;",
+        )
+        .expect("fill and free pages");
+        checkpoint_wal(&conn).expect("checkpoint");
+        let pragma = |name: &str| -> i64 {
+            conn.pragma_query_value(None, name, |row| row.get(0))
+                .expect("read pragma")
+        };
+        let file_bytes = || std::fs::metadata(&path).expect("database file").len() as i64;
+        let filled_bytes = file_bytes();
+        let free_bytes = pragma("freelist_count") * pragma("page_size");
+        assert!(free_bytes > filled_bytes / 2);
+
+        return_free_space(&conn, free_bytes + 1);
+        assert_eq!(
+            file_bytes(),
+            filled_bytes,
+            "too little to be worth a rewrite"
+        );
+
+        return_free_space(&conn, free_bytes);
+        assert!(file_bytes() <= filled_bytes - free_bytes);
+        assert_eq!(pragma("freelist_count"), 0);
+        assert_eq!(probe_sum(&conn), 7);
+        // The connection is configured as before.
+        assert_eq!(pragma("mmap_size"), MMAP_SIZE_BYTES);
+        assert_eq!(pragma("temp_store"), 2);
+        let journal_mode: String = conn
+            .pragma_query_value(None, "journal_mode", |row| row.get(0))
+            .expect("read journal mode");
+        assert_eq!(journal_mode, "wal");
     }
 
     /// Returns a reader to the pool while it still holds a WAL read lock, as SQLite on

@@ -1,8 +1,9 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::{
+    columns::StatisticColumns,
     comparison::{player_families, GroupsSource, PositionFamily},
     kept_stats::{kept_stats_snapshots, stats_join_sql},
     league_strength::{shifted, LeagueAdjustment, LeagueBreakdown},
@@ -142,30 +143,32 @@ pub(crate) fn get_player_moneyball(
     // His positions are today's, while his league is the one he played the statistics in.
     let kept = kept_stats_snapshots(conn, snapshot_id)?;
     let kept_ids = kept.iter().map(|kept| kept.snapshot_id).collect::<Vec<_>>();
+    let columns = StatisticColumns::all();
     let (
         source_id,
         starts,
         substitute_appearances,
         minutes,
-        statistics_json,
         percentiles_json,
         positions_json,
         division,
         current_minutes,
+        statistic_values,
     ) = conn
         .query_row(
             &format!(
                 "SELECT moneyball.snapshot_id, moneyball.starts, moneyball.substitute_appearances,
-                        moneyball.minutes, moneyball.statistics_json, moneyball.percentiles_json,
+                        moneyball.minutes, moneyball.percentiles_json,
                         players.positions_json,
                         (SELECT source.division FROM players source
                          WHERE source.snapshot_id = moneyball.snapshot_id
                            AND source.uid = players.uid),
                         (SELECT own.minutes FROM player_moneyball_stats own
                          WHERE own.snapshot_id = players.snapshot_id
-                           AND own.player_uid = players.uid)
+                           AND own.player_uid = players.uid){}
                  FROM players{}
                  WHERE players.snapshot_id = ?1 AND players.uid = ?2",
+                columns.appended_sql("moneyball"),
                 stats_join_sql("players", &kept_ids)
             ),
             params![snapshot_id, uid],
@@ -176,15 +179,15 @@ pub(crate) fn get_player_moneyball(
                     row.get::<_, Option<i64>>(2)?,
                     row.get::<_, Option<i64>>(3)?,
                     row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                    row.get::<_, String>(6)?,
-                    row.get::<_, Option<String>>(7)?,
-                    row.get::<_, Option<i64>>(8)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<i64>>(7)?,
+                    columns.read(row, 8)?,
                 ))
             },
         )
         .map_err(|error| error.to_string())?;
-    let (Some(source_id), Some(statistics_json)) = (source_id, statistics_json) else {
+    let Some(source_id) = source_id else {
         return Ok(Some(MoneyballProfile::no_data()));
     };
     let borrowed = kept.into_iter().find(|kept| kept.snapshot_id == source_id);
@@ -193,7 +196,10 @@ pub(crate) fn get_player_moneyball(
         return Ok(Some(MoneyballProfile::needs_reimport()));
     }
 
-    let statistic_values = parse_statistics(&statistics_json)?;
+    let statistic_values = statistic_values
+        .iter()
+        .map(|value| Some(*value).filter(|value| !value.is_nan()))
+        .collect::<Vec<_>>();
     let statistics = MONEYBALL_STATISTIC_KEYS
         .iter()
         .zip(&statistic_values)
@@ -317,25 +323,6 @@ fn score_roles(
         .collect()
 }
 
-/// Parses a stored statistics row into values in `MONEYBALL_STATISTIC_KEYS` order.
-fn parse_statistics(json: &str) -> Result<Vec<Option<f64>>, String> {
-    let object: HashMap<&str, Option<f64>> = serde_json::from_str(json)
-        .map_err(|error| format!("invalid Moneyball statistics JSON: {error}"))?;
-    const CATALOGUE_ERROR: &str = "Moneyball statistics must contain the exact metric catalogue";
-    if object.len() != MONEYBALL_STATISTIC_KEYS.len() {
-        return Err(CATALOGUE_ERROR.to_string());
-    }
-    MONEYBALL_STATISTIC_KEYS
-        .iter()
-        .map(|key| {
-            object
-                .get(key)
-                .copied()
-                .ok_or_else(|| CATALOGUE_ERROR.to_string())
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -348,6 +335,7 @@ mod tests {
     use crate::features::moneyball::comparison::{GroupsSource, PositionFamily};
     use crate::features::moneyball::kept_stats::test_support::add_kept_snapshot;
     use crate::features::moneyball::league_strength::test_support::measure_leagues;
+    use crate::features::moneyball::persistence::test_support::insert_statistics_row;
     use crate::features::moneyball::role_catalog::builtin_catalog;
     use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
     use crate::features::snapshot::ingest::ingest_dump_file;
@@ -391,15 +379,20 @@ mod tests {
         statistics_json: &str,
         percentiles_json: Option<&str>,
     ) {
+        insert_statistics_row(
+            conn,
+            snapshot_id,
+            player_uid,
+            Some(1500),
+            statistics_json,
+            percentiles_json,
+        );
         conn.execute(
-            "INSERT INTO player_moneyball_stats (
-                snapshot_id, player_uid, asking_price_kind, asking_price_lower_eur,
-                asking_price_upper_eur, starts, substitute_appearances, minutes,
-                statistics_json, percentiles_json
-             ) VALUES (?1, ?2, 'single', 12000000, NULL, 18, 3, 1500, ?3, ?4)",
-            params![snapshot_id, player_uid, statistics_json, percentiles_json],
+            "UPDATE player_moneyball_stats SET starts = 18, substitute_appearances = 3
+             WHERE snapshot_id = ?1 AND player_uid = ?2",
+            params![snapshot_id, player_uid],
         )
-        .expect("insert Moneyball row");
+        .expect("set appearances");
     }
 
     fn insert_player(conn: &Connection, snapshot_id: i64, uid: i64, positions_json: &str) {
@@ -926,22 +919,5 @@ mod tests {
             profile(&conn, 77).state,
             super::MoneyballProfileState::NoData
         );
-    }
-
-    #[test]
-    fn rejects_scored_rows_without_the_exact_metric_catalogue() {
-        let temp_dir = tempfile::tempdir().expect("temp directory");
-        let mut conn = open_migrated(&temp_dir.path().join("moneyball-profile-invalid-json.db"));
-        let snapshot_id = ingest_current_player(&mut conn);
-        insert_moneyball_row(&conn, snapshot_id, Some("{}"));
-        conn.execute(
-            "UPDATE player_moneyball_stats SET statistics_json = '{}' WHERE snapshot_id = ?1 AND player_uid = 77",
-            [snapshot_id],
-        )
-        .expect("corrupt statistics fixture");
-
-        let error = get_player_moneyball(&conn, &GroupsSource::Uncached, 77)
-            .expect_err("invalid catalogue must fail");
-        assert!(error.contains("exact metric catalogue"));
     }
 }

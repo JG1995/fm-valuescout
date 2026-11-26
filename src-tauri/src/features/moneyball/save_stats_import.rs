@@ -544,7 +544,7 @@ mod tests {
             let conn = self.db.0.lock().expect("lock");
             let rows = conn
                 .prepare(
-                    "SELECT player_uid, json_extract(statistics_json, '$.goals'), percentiles_json
+                    "SELECT player_uid, goals, percentiles_json
                  FROM player_moneyball_stats WHERE snapshot_id = ?1 ORDER BY player_uid",
                 )
                 .expect("prepare cohort query")

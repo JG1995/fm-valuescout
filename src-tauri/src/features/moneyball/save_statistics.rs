@@ -307,6 +307,7 @@ mod tests {
     use crate::features::moneyball::catalog::{
         is_save_unavailable_statistic_key, SAVE_UNAVAILABLE_STATISTIC_KEYS,
     };
+    use crate::features::moneyball::columns::statistic_column;
 
     fn decimal(statistics: &MoneyballStatistics, key: &str) -> f64 {
         match statistics[key] {
@@ -486,8 +487,8 @@ mod tests {
         assert_eq!(inconsistent["game_win_ratio"], None);
     }
 
-    #[test]
-    fn a_fully_populated_player_fills_every_key_the_save_can_source() {
+    /// The row of a player with every total the save can store.
+    fn fully_populated_row() -> CohortRow {
         let mut player = SavePlayerSeasonStats::for_test(1_501, |stat| match stat {
             SeasonStat::GoalsOutsideBox => None,
             // Headers lost needs more attempts than wins.
@@ -501,8 +502,12 @@ mod tests {
         player.substitute_appearances = 2;
         player.rated_appearances = 20;
         player.rating_sum = 140.0;
+        cohort_row(&player)
+    }
 
-        let row = cohort_row(&player);
+    #[test]
+    fn a_fully_populated_player_fills_every_key_the_save_can_source() {
+        let row = fully_populated_row();
 
         assert_eq!(row.statistics.len(), MONEYBALL_STATISTIC_KEYS.len());
         for key in MONEYBALL_STATISTIC_KEYS {
@@ -521,5 +526,30 @@ mod tests {
             ),
             (1_501, 20, 2, 1_800)
         );
+    }
+
+    /// A count read back from SQLite must be an integer and any other statistic a real
+    /// number, whatever its value, so each column is declared for what the save derives.
+    #[test]
+    fn each_statistic_has_a_column_of_the_type_the_save_derives() {
+        let conn = rusqlite::Connection::open_in_memory().expect("open db");
+        crate::db::migrations::apply(&conn).expect("apply migrations");
+        let declared = conn
+            .prepare("SELECT name, type FROM pragma_table_info('player_moneyball_stats')")
+            .expect("prepare table info")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("read table info")
+            .collect::<Result<std::collections::HashMap<String, String>, _>>()
+            .expect("collect columns");
+        let row = fully_populated_row();
+
+        for (index, key) in MONEYBALL_STATISTIC_KEYS.iter().enumerate() {
+            let expected = match row.statistics[*key] {
+                Some(MoneyballMetricValue::Count(_)) => "INTEGER",
+                Some(MoneyballMetricValue::Decimal(_)) => "REAL",
+                None => continue,
+            };
+            assert_eq!(declared[statistic_column(index)], expected, "{key}");
+        }
     }
 }

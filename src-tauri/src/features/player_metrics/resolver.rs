@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use rusqlite::Row;
 
+use crate::features::moneyball::columns::statistic_column_of;
 use crate::features::moneyball::comparison::MIN_SEASON_MINUTES;
 use crate::features::moneyball::{is_moneyball_statistic_key, role_catalog::builtin_catalog};
 use crate::features::scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS};
@@ -54,13 +55,16 @@ pub fn qualified_season_stats_sql() -> String {
     )
 }
 
-/// A statistic of the `moneyball` row, or NULL when that row does not qualify. `key` must be a
-/// validated catalog key.
+/// A statistic of the `moneyball` row, or NULL when that row does not qualify or `key` is
+/// outside the catalog.
 pub fn moneyball_statistic_sql(key: &str) -> String {
-    format!(
-        "CASE WHEN {} THEN json_extract(moneyball.statistics_json, '$.\"{key}\"') END",
-        qualified_season_stats_sql()
-    )
+    match statistic_column_of(key) {
+        Some(column) => format!(
+            "CASE WHEN {} THEN moneyball.{column} END",
+            qualified_season_stats_sql()
+        ),
+        None => "NULL".to_string(),
+    }
 }
 
 /// A playing-time count of the `moneyball` row: 0 for a player without one.
@@ -767,8 +771,9 @@ mod tests {
         assert_eq!(
             metric.sql_expression("players"),
             "CASE WHEN (moneyball.minutes >= 450 AND moneyball.percentiles_json IS NOT NULL) \
-             THEN json_extract(moneyball.statistics_json, '$.\"np-xg\"') END"
+             THEN moneyball.np_xg END"
         );
+        assert_eq!(moneyball_statistic_sql("np-xg'); --"), "NULL");
     }
 
     #[test]

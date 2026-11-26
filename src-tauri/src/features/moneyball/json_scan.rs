@@ -1,6 +1,6 @@
-//! A scanner for the flat JSON objects stored in Moneyball rows and player position maps: keys
-//! map to numbers or null. It finds values without building a JSON tree, which matters when a
-//! request reads tens of thousands of stored objects.
+//! A scanner for the flat JSON objects stored as player position maps: keys map to numbers or
+//! null. It finds values without building a JSON tree, which matters when a request reads
+//! tens of thousands of stored objects.
 
 /// Calls `found` with each key and raw value text of one flat JSON object whose values are
 /// numbers or null.

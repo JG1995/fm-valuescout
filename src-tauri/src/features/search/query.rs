@@ -7,6 +7,7 @@ use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Ro
 use crate::db::result_cache::{Cancellation, ResultCache, TableRegistry, TableTicket};
 use crate::db::Db;
 
+use crate::features::moneyball::columns::StatisticColumns;
 use crate::features::moneyball::comparison::{
     scan_in_parallel, ComparisonGroup, ComparisonGroupsCache, GroupsSource,
 };
@@ -14,6 +15,7 @@ use crate::features::moneyball::kept_stats::{
     kept_stats_snapshots, stats_join_sql, KeptStats, STATS_DIVISION_SQL,
 };
 use crate::features::moneyball::role_catalog::{builtin_catalog, RoleDefinition};
+use crate::features::planner::fit::lane_statistic_keys;
 use crate::features::planner::tactic::{base_position, read_tactic, TacticLane};
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
@@ -33,10 +35,7 @@ use super::filter::{
     moneyball_role_ids_from_ast, post_cohort_rules_match, potential_role_ids_from_ast,
     without_post_cohort_rules, CombineMode, FilterAst,
 };
-use super::season_scores::{
-    lane_group, lane_statistic_keys, needed_statistics, scan_needed_statistics, tactic_lane,
-    PlayerFit, SeasonSources,
-};
+use super::season_scores::{lane_group, tactic_lane, PlayerFit, SeasonSources};
 
 pub use crate::features::player_metrics::resolver::DynamicValue;
 
@@ -594,7 +593,8 @@ struct ScoredRow {
     sql_match: bool,
     /// The snapshot of the statistics row, when the player has a qualified sample.
     source_id: Option<i64>,
-    statistics_json: Option<String>,
+    /// The statistics the request reads, when the player has a qualified sample.
+    statistics: Option<Box<[f64]>>,
     division: Option<String>,
     fit: Option<PlayerFit>,
 }
@@ -665,7 +665,7 @@ fn scored_order(
     if let Some(lane) = sort_lane {
         keys.extend(lane_statistic_keys(lane));
     }
-    let needed = needed_statistics(keys.iter().map(String::as_str))?;
+    let needed = StatisticColumns::of_keys(keys.iter().map(String::as_str))?;
     let kept = kept_stats_snapshots(conn, snapshot_id)?;
     let groups_to_rank = match request.comparison {
         Comparison::Group(group) => Some(group),
@@ -707,13 +707,15 @@ fn scored_order(
     } else {
         ""
     };
+    let first_statistic_column = if sort_lane.is_some() { 6 } else { 4 };
     let sql = format!(
         "SELECT players.uid, {match_column},
                 CASE WHEN {qualified} THEN moneyball.snapshot_id END,
-                CASE WHEN {qualified} THEN moneyball.statistics_json END,
-                CASE WHEN {qualified} THEN {STATS_DIVISION_SQL} END{fit_columns}
+                CASE WHEN {qualified} THEN {STATS_DIVISION_SQL} END{fit_columns}{}
          {} WHERE {where_sql} {}",
-        query.from_sql, query.order_sql
+        needed.appended_sql("moneyball"),
+        query.from_sql,
+        query.order_sql
     );
     #[cfg(test)]
     if let Some(hook) = tests::BEFORE_ORDER_QUERY.with(|hook| hook.borrow_mut().take()) {
@@ -728,17 +730,20 @@ fn scored_order(
     let read = |row: &Row<'_>| {
         let index = next_index.get();
         next_index.set(index + 1);
+        let source_id: Option<i64> = row.get(2)?;
         Ok(ScoredRow {
             index,
             uid: row.get(0)?,
             sql_match: row.get::<_, i64>(1)? == 1,
-            source_id: row.get(2)?,
-            statistics_json: row.get(3)?,
-            division: row.get(4)?,
+            source_id,
+            statistics: source_id
+                .map(|_| needed.read(row, first_statistic_column))
+                .transpose()?,
+            division: row.get(3)?,
             fit: if sort_lane.is_some() {
                 Some(PlayerFit::from_columns(
-                    &row.get::<_, String>(5)?,
-                    row.get(6)?,
+                    &row.get::<_, String>(4)?,
+                    row.get(5)?,
                 ))
             } else {
                 None
@@ -746,13 +751,10 @@ fn scored_order(
         })
     };
     let scan = |row: ScoredRow| -> Result<(usize, i64, bool, Option<u8>), String> {
-        let sample = match (
-            row.source_id.and_then(|id| sources.get(id)),
-            &row.statistics_json,
-        ) {
-            (Some(source), Some(json)) => Some((source, scan_needed_statistics(json, &needed)?)),
-            _ => None,
-        };
+        let sample = row
+            .source_id
+            .and_then(|id| sources.get(id))
+            .zip(row.statistics.as_ref());
         let league_shift = sample.as_ref().map_or(0, |(source, _)| {
             source.league_shift(row.division.as_deref())
         });
@@ -954,6 +956,17 @@ fn read_window(
     let scores_needed =
         !statistic_fields.is_empty() || !role_fields.is_empty() || !lane_fields.is_empty();
     let reads_stats = scores_needed || fields.iter().any(MetricField::reads_season_stats);
+    let mut keys = statistic_fields
+        .iter()
+        .map(|(_, key)| (*key).to_string())
+        .collect::<Vec<_>>();
+    for (_, definition) in &role_fields {
+        keys.extend(definition.metrics.iter().map(|metric| metric.key.clone()));
+    }
+    for (_, lane) in &lane_fields {
+        keys.extend(lane_statistic_keys(lane));
+    }
+    let needed = StatisticColumns::of_keys(keys.iter().map(String::as_str))?;
 
     let (uses_current_role_metrics, uses_potential_role_metrics) =
         role_metric_requirements(None, &SortField::Ca, fields)?;
@@ -1017,12 +1030,14 @@ fn read_window(
     }
     if scores_needed {
         select_sql.push_str(&format!(
-            ", CASE WHEN {qualified} THEN moneyball.statistics_json END,
-               CASE WHEN {qualified} THEN {STATS_DIVISION_SQL} END"
+            ", CASE WHEN {qualified} THEN {STATS_DIVISION_SQL} END"
         ));
     }
     if !lane_fields.is_empty() {
         select_sql.push_str(", players.positions_json, players.preferred_foot");
+    }
+    if scores_needed {
+        select_sql.push_str(&needed.appended_sql("moneyball"));
     }
     select_sql.push_str(" FROM players");
     if uses_current_role_metrics || uses_potential_role_metrics {
@@ -1050,8 +1065,9 @@ fn read_window(
     ));
 
     let source_index = 12 + sql_fields.len();
-    let json_index = source_index + 1;
-    let fit_index = source_index + 3;
+    let division_index = source_index + 1;
+    let fit_index = source_index + 2;
+    let first_statistic_index = fit_index + if lane_fields.is_empty() { 0 } else { 2 };
     let mut rows = conn
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?
@@ -1062,11 +1078,14 @@ fn read_window(
             } else {
                 None
             };
-            let (statistics_json, division): (Option<String>, Option<String>) = if scores_needed {
-                (row.get(json_index)?, row.get(json_index + 1)?)
-            } else {
-                (None, None)
-            };
+            let (statistics, division): (Option<Box<[f64]>>, Option<String>) =
+                match source_id.filter(|_| scores_needed) {
+                    Some(_) => (
+                        Some(needed.read(row, first_statistic_index)?),
+                        row.get(division_index)?,
+                    ),
+                    None => (None, None),
+                };
             let fit = if lane_fields.is_empty() {
                 None
             } else {
@@ -1075,10 +1094,7 @@ fn read_window(
                     row.get(fit_index + 1)?,
                 ))
             };
-            Ok((
-                player.uid,
-                (player, source_id, statistics_json, division, fit),
-            ))
+            Ok((player.uid, (player, source_id, statistics, division, fit)))
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<HashMap<_, _>, _>>()
@@ -1102,21 +1118,9 @@ fn read_window(
     } else {
         None
     };
-    let mut keys = statistic_fields
-        .iter()
-        .map(|(_, key)| (*key).to_string())
-        .collect::<Vec<_>>();
-    for (_, definition) in &role_fields {
-        keys.extend(definition.metrics.iter().map(|metric| metric.key.clone()));
-    }
-    for (_, lane) in &lane_fields {
-        keys.extend(lane_statistic_keys(lane));
-    }
-    let needed = needed_statistics(keys.iter().map(String::as_str))?;
-
     let mut players = Vec::with_capacity(window.len());
     for uid in window {
-        let Some((mut player, source_id, statistics_json, division, fit)) = rows.remove(uid) else {
+        let Some((mut player, source_id, statistics, division, fit)) = rows.remove(uid) else {
             continue;
         };
         player.moneyball_stats_date = source_id
@@ -1124,12 +1128,9 @@ fn read_window(
             .and_then(|id| kept.iter().find(|kept| kept.snapshot_id == id))
             .map(|kept| kept.stats_date.clone());
         if let Some(sources) = &sources {
-            let sample = match (source_id.and_then(|id| sources.get(id)), &statistics_json) {
-                (Some(source), Some(json)) => {
-                    Some((source, scan_needed_statistics(json, &needed)?))
-                }
-                _ => None,
-            };
+            let sample = source_id
+                .and_then(|id| sources.get(id))
+                .zip(statistics.as_ref());
             let league_shift = sample
                 .as_ref()
                 .map_or(0, |(source, _)| source.league_shift(division.as_deref()));
@@ -1313,6 +1314,7 @@ mod tests {
     use crate::db::migrations;
     use crate::features::moneyball::comparison::{ComparisonGroup, PositionFamily};
     use crate::features::moneyball::league_strength::{self, test_support::measure_leagues};
+    use crate::features::moneyball::persistence::test_support::insert_statistics_row;
     use crate::features::moneyball::role_catalog::builtin_catalog;
     use crate::features::player_metrics::{
         club_dna::SCORE_MODEL_VERSION, potential_scores::PROJECTION_MODEL_VERSION,
@@ -1649,13 +1651,14 @@ mod tests {
         percentiles_json: Option<&str>,
     ) {
         // 900 minutes: enough to count among the player's comparison groups' peers.
-        conn.execute(
-            "INSERT INTO player_moneyball_stats (
-                snapshot_id, player_uid, minutes, statistics_json, percentiles_json
-             ) VALUES (?1, ?2, 900, ?3, ?4)",
-            rusqlite::params![snapshot_id, player_uid, statistics_json, percentiles_json],
-        )
-        .expect("insert Moneyball row");
+        insert_statistics_row(
+            conn,
+            snapshot_id,
+            player_uid,
+            Some(900),
+            statistics_json,
+            percentiles_json,
+        );
     }
 
     fn club_dna_score_rows(conn: &Connection) -> Vec<(i64, i64, i64, i64, Option<i64>)> {

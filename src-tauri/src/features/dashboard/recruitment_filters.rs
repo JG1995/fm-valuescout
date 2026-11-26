@@ -2,7 +2,7 @@
 //!
 //! Most rules compile to SQL and run as one column per slot in the candidate query. A
 //! percentile rule ranks the candidate's statistic within the slot's comparison group (see
-//! `moneyball::comparison`), read from his scanned statistics row. Season-stat rules run only
+//! `moneyball::comparison`), read from his statistics row. Season-stat rules run only
 //! while season stats apply.
 
 use rusqlite::{types::Value, Row};
@@ -84,12 +84,12 @@ impl SlotFilters {
         self.uses_season_stats
     }
 
-    /// Whether a percentile rule ranks a statistic, so `lane_passes` needs the candidate's
-    /// scanned statistics.
-    pub(super) fn ranks_statistics(&self) -> bool {
+    /// The statistics the percentile rules rank, which `lane_passes` reads from the
+    /// candidate's statistics.
+    pub(super) fn ranked_statistics(&self) -> impl Iterator<Item = &str> {
         self.lanes
             .iter()
-            .any(|lane| !lane.percentile_rules.is_empty())
+            .flat_map(|lane| lane.percentile_rules.iter().map(|rule| rule.key.as_str()))
     }
 
     /// The candidate query's extra columns, one for each slot with SQL rules, which
@@ -126,9 +126,9 @@ impl SlotFilters {
     }
 
     /// Whether the candidate passes each slot's filters, given `sql_passes` for his row.
-    /// `statistics` are his scanned statistics (`comparison::scan_statistics`), if he has any,
-    /// and `rankings` those of the snapshot they come from, holding the group of every slot
-    /// with a percentile rule.
+    /// `statistics` are his statistics in `MONEYBALL_STATISTIC_KEYS` order, if he has any,
+    /// holding at least `ranked_statistics`, and `rankings` those of the snapshot they come
+    /// from, holding the group of every slot with a percentile rule.
     pub(super) fn lane_passes(
         &self,
         sql_passes: &[bool],

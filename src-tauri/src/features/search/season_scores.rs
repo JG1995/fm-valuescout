@@ -13,19 +13,16 @@ use std::sync::Arc;
 use rusqlite::Connection;
 
 use crate::features::moneyball::comparison::{
-    scan_statistic_values, statistic_index, ComparisonGroup, ComparisonGroups, GroupsSource,
-    PositionFamily, ResolvedGroups,
+    ComparisonGroup, ComparisonGroups, GroupsSource, PositionFamily, ResolvedGroups,
 };
-use crate::features::moneyball::json_scan::parse_json_value;
 use crate::features::moneyball::kept_stats::KeptStats;
 use crate::features::moneyball::league_strength::{shifted, LeagueAdjustment};
-use crate::features::moneyball::role_catalog::{definition_for_attribute_role, RoleDefinition};
+use crate::features::moneyball::role_catalog::RoleDefinition;
 use crate::features::moneyball::role_score::score_role;
-use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
 use crate::features::planner::fit::{
     custom_metrics_lane_score, moneyball_roles_lane_score, slot_group,
 };
-use crate::features::planner::tactic::{base_position, PlannerTactic, TacticLane};
+use crate::features::planner::tactic::{PlannerTactic, TacticLane};
 use crate::features::player_metrics::resolver::MetricField;
 
 use super::query::Comparison;
@@ -139,34 +136,6 @@ impl SeasonSources {
     }
 }
 
-/// Which statistics a request reads, indexed like `MONEYBALL_STATISTIC_KEYS`.
-pub(super) fn needed_statistics<'a>(
-    keys: impl IntoIterator<Item = &'a str>,
-) -> Result<Vec<bool>, String> {
-    let mut needed = vec![false; MONEYBALL_STATISTIC_KEYS.len()];
-    for key in keys {
-        let index =
-            statistic_index(key).ok_or_else(|| format!("unknown Moneyball statistic: {key}"))?;
-        needed[index] = true;
-    }
-    Ok(needed)
-}
-
-/// The `needed` statistics of one stored statistics object, in `MONEYBALL_STATISTIC_KEYS`
-/// order; the others are NaN.
-pub(super) fn scan_needed_statistics(json: &str, needed: &[bool]) -> Result<Box<[f64]>, String> {
-    let mut values = vec![f64::NAN; MONEYBALL_STATISTIC_KEYS.len()].into_boxed_slice();
-    scan_statistic_values(json, |index, text| {
-        if needed[index] {
-            if let Some(value) = parse_json_value(text, |text| text.parse::<f64>().ok())? {
-                values[index] = value;
-            }
-        }
-        Ok(())
-    })?;
-    Ok(values)
-}
-
 /// The positions and preferred foot that a slot's fit adjustment reads.
 pub(super) struct PlayerFit {
     positions: BTreeMap<String, Option<i64>>,
@@ -189,23 +158,6 @@ pub(super) fn tactic_lane<'a>(
 ) -> Option<&'a TacticLane> {
     let lane_id = field.tactic_lane_id()?;
     tactic.lanes.iter().find(|lane| lane.lane_id == lane_id)
-}
-
-/// The statistics a slot's Moneyball Score reads.
-pub(super) fn lane_statistic_keys(lane: &TacticLane) -> Vec<String> {
-    if !lane.custom_metric_keys.is_empty() {
-        return lane.custom_metric_keys.clone();
-    }
-    [
-        (lane.ip_role_id.as_str(), lane.ip_position.as_str()),
-        (lane.oop_role_id.as_str(), lane.oop_position.as_str()),
-    ]
-    .into_iter()
-    .filter_map(|(role_id, position)| {
-        definition_for_attribute_role(role_id, base_position(position))
-    })
-    .flat_map(|definition| definition.metrics.iter().map(|metric| metric.key.clone()))
-    .collect()
 }
 
 /// The group a slot's chosen metrics rank within; role definitions rank within their own

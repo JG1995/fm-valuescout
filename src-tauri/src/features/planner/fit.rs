@@ -161,6 +161,24 @@ pub(crate) fn custom_metrics_lane_score(
     )
 }
 
+/// The statistics a slot's Moneyball score reads: its chosen metrics (`custom_metrics_lane_score`)
+/// or, when it has none, those of its roles' Moneyball definitions (`moneyball_roles_lane_score`).
+pub(crate) fn lane_statistic_keys(lane: &TacticLane) -> Vec<String> {
+    if !lane.custom_metric_keys.is_empty() {
+        return lane.custom_metric_keys.clone();
+    }
+    [
+        (lane.ip_role_id.as_str(), lane.ip_position.as_str()),
+        (lane.oop_role_id.as_str(), lane.oop_position.as_str()),
+    ]
+    .into_iter()
+    .filter_map(|(role_id, position)| {
+        definition_for_attribute_role(role_id, base_position(position))
+    })
+    .flat_map(|definition| definition.metrics.iter().map(|metric| metric.key.clone()))
+    .collect()
+}
+
 /// The peers a slot's custom metrics and recruitment filters rank a player among: the
 /// families of its two positions. `None` for a position without a family (the sweeper).
 pub(crate) fn slot_group(lane: &TacticLane) -> Option<ComparisonGroup> {

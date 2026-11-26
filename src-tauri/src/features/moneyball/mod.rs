@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 mod catalog;
+pub(crate) mod columns;
 pub(crate) mod commands;
 pub(crate) mod comparison;
 pub(crate) mod json_scan;

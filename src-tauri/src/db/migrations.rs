@@ -1049,6 +1049,465 @@ CREATE INDEX idx_staff_snapshot_club_uid
     ON staff(snapshot_id, club_uid);
 ";
 
+/// Gives each of the 138 season statistics its own column in place of the JSON object that
+/// repeated every key in every row, and drops the asking-price and import-time columns that
+/// nothing read. This is the checked-in column inventory: a later catalog change needs a
+/// migration of its own. Rows keep their order, values, and value types.
+pub const SEASON_STATISTIC_COLUMNS_V66_SQL: &str = "
+ALTER TABLE player_moneyball_stats RENAME TO player_moneyball_stats_json;
+
+CREATE TABLE player_moneyball_stats (
+    snapshot_id INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
+    player_uid INTEGER NOT NULL,
+    starts INTEGER CHECK (starts IS NULL OR starts >= 0),
+    substitute_appearances INTEGER CHECK (
+        substitute_appearances IS NULL OR substitute_appearances >= 0
+    ),
+    minutes INTEGER CHECK (minutes IS NULL OR minutes >= 0),
+    percentiles_json TEXT CHECK (
+        percentiles_json IS NULL
+        OR (json_valid(percentiles_json) = 1 AND json_type(percentiles_json) = 'object')
+    ),
+    goals INTEGER,
+    goals_per_90 REAL,
+    goals_from_outside_the_box INTEGER,
+    goals_from_outside_the_box_per_90 REAL,
+    xg REAL,
+    xg_per_90 REAL,
+    np_xg REAL,
+    np_xg_per_90 REAL,
+    xg_op REAL,
+    xg_op_per_90 REAL,
+    xg_per_shot REAL,
+    shots INTEGER,
+    shots_per_90 REAL,
+    shots_from_outside_the_box INTEGER,
+    shots_from_outside_the_box_per_90 REAL,
+    shots_on_target INTEGER,
+    shots_on_target_per_90 REAL,
+    penalties_taken INTEGER,
+    penalties_taken_per_90 REAL,
+    penalties_scored INTEGER,
+    penalties_scored_per_90 REAL,
+    penalties_scored_ratio REAL,
+    free_kicks INTEGER,
+    free_kicks_per_90 REAL,
+    minutes_per_goal REAL,
+    minutes_per_goal_or_assist REAL,
+    assists INTEGER,
+    assists_per_90 REAL,
+    xa REAL,
+    xa_per_90 REAL,
+    chances_created INTEGER,
+    chances_created_per_90 REAL,
+    clear_cut_chances_created INTEGER,
+    clear_cut_chances_created_per_90 REAL,
+    key_passes INTEGER,
+    key_passes_per_90 REAL,
+    open_play_key_passes INTEGER,
+    open_play_key_passes_per_90 REAL,
+    crosses_attempted INTEGER,
+    crosses_attempted_per_90 REAL,
+    crosses_completed INTEGER,
+    crosses_completed_per_90 REAL,
+    cross_completion_ratio REAL,
+    open_play_crosses_attempted INTEGER,
+    open_play_crosses_attempted_per_90 REAL,
+    open_play_crosses_completed INTEGER,
+    open_play_crosses_completed_per_90 REAL,
+    open_play_cross_completion_ratio REAL,
+    minutes_per_assist REAL,
+    passes_attempted INTEGER,
+    passes_attempted_per_90 REAL,
+    passes_completed INTEGER,
+    passes_completed_per_90 REAL,
+    pass_completion_ratio REAL,
+    progressive_passes INTEGER,
+    progressive_passes_per_90 REAL,
+    dribbles_made INTEGER,
+    dribbles_made_per_90 REAL,
+    distance_covered REAL,
+    distance_covered_per_90 REAL,
+    high_intensity_sprints INTEGER,
+    high_intensity_sprints_per_90 REAL,
+    possession_lost INTEGER,
+    possession_lost_per_90 REAL,
+    tackles_attempted INTEGER,
+    tackles_attempted_per_90 REAL,
+    tackles_completed INTEGER,
+    tackles_completed_per_90 REAL,
+    tackle_completion_ratio REAL,
+    key_tackles INTEGER,
+    key_tackles_per_90 REAL,
+    interceptions INTEGER,
+    interceptions_per_90 REAL,
+    possession_won INTEGER,
+    possession_won_per_90 REAL,
+    pressures_attempted INTEGER,
+    pressures_attempted_per_90 REAL,
+    pressures_completed INTEGER,
+    pressures_completed_per_90 REAL,
+    pressure_success_ratio REAL,
+    blocks INTEGER,
+    blocks_per_90 REAL,
+    shots_blocked_defending INTEGER,
+    shots_blocked_defending_per_90 REAL,
+    clearances INTEGER,
+    clearances_per_90 REAL,
+    headers_attempted INTEGER,
+    headers_attempted_per_90 REAL,
+    headers_won INTEGER,
+    headers_won_per_90 REAL,
+    headers_lost INTEGER,
+    headers_lost_per_90 REAL,
+    headers_won_ratio REAL,
+    key_headers INTEGER,
+    key_headers_per_90 REAL,
+    clean_sheets INTEGER,
+    clean_sheets_per_90 REAL,
+    clean_sheets_ratio REAL,
+    goals_conceded INTEGER,
+    goals_conceded_per_90 REAL,
+    saves INTEGER,
+    saves_per_90 REAL,
+    save_ratio REAL,
+    expected_save_percentage REAL,
+    xgp REAL,
+    xgp_per_90 REAL,
+    saves_held INTEGER,
+    saves_held_per_90 REAL,
+    saves_parried INTEGER,
+    saves_parried_per_90 REAL,
+    saves_tipped INTEGER,
+    saves_tipped_per_90 REAL,
+    penalties_faced INTEGER,
+    penalties_faced_per_90 REAL,
+    penalties_saved INTEGER,
+    penalties_saved_per_90 REAL,
+    penalties_saved_ratio REAL,
+    fouls_made INTEGER,
+    fouls_made_per_90 REAL,
+    fouls_against INTEGER,
+    fouls_against_per_90 REAL,
+    yellow_cards INTEGER,
+    yellow_cards_per_90 REAL,
+    red_cards INTEGER,
+    red_cards_per_90 REAL,
+    offsides INTEGER,
+    offsides_per_90 REAL,
+    mistakes_leading_to_goal INTEGER,
+    mistakes_leading_to_goal_per_90 REAL,
+    average_rating REAL,
+    player_of_the_match INTEGER,
+    player_of_the_match_per_90 REAL,
+    games_won INTEGER,
+    games_drawn INTEGER,
+    games_lost INTEGER,
+    game_win_ratio REAL,
+    team_goals INTEGER,
+    team_goals_per_90 REAL,
+    PRIMARY KEY (snapshot_id, player_uid),
+    FOREIGN KEY (snapshot_id, player_uid)
+        REFERENCES players(snapshot_id, uid) ON DELETE CASCADE
+);
+
+INSERT INTO player_moneyball_stats (
+    snapshot_id,
+    player_uid,
+    starts,
+    substitute_appearances,
+    minutes,
+    percentiles_json,
+    goals,
+    goals_per_90,
+    goals_from_outside_the_box,
+    goals_from_outside_the_box_per_90,
+    xg,
+    xg_per_90,
+    np_xg,
+    np_xg_per_90,
+    xg_op,
+    xg_op_per_90,
+    xg_per_shot,
+    shots,
+    shots_per_90,
+    shots_from_outside_the_box,
+    shots_from_outside_the_box_per_90,
+    shots_on_target,
+    shots_on_target_per_90,
+    penalties_taken,
+    penalties_taken_per_90,
+    penalties_scored,
+    penalties_scored_per_90,
+    penalties_scored_ratio,
+    free_kicks,
+    free_kicks_per_90,
+    minutes_per_goal,
+    minutes_per_goal_or_assist,
+    assists,
+    assists_per_90,
+    xa,
+    xa_per_90,
+    chances_created,
+    chances_created_per_90,
+    clear_cut_chances_created,
+    clear_cut_chances_created_per_90,
+    key_passes,
+    key_passes_per_90,
+    open_play_key_passes,
+    open_play_key_passes_per_90,
+    crosses_attempted,
+    crosses_attempted_per_90,
+    crosses_completed,
+    crosses_completed_per_90,
+    cross_completion_ratio,
+    open_play_crosses_attempted,
+    open_play_crosses_attempted_per_90,
+    open_play_crosses_completed,
+    open_play_crosses_completed_per_90,
+    open_play_cross_completion_ratio,
+    minutes_per_assist,
+    passes_attempted,
+    passes_attempted_per_90,
+    passes_completed,
+    passes_completed_per_90,
+    pass_completion_ratio,
+    progressive_passes,
+    progressive_passes_per_90,
+    dribbles_made,
+    dribbles_made_per_90,
+    distance_covered,
+    distance_covered_per_90,
+    high_intensity_sprints,
+    high_intensity_sprints_per_90,
+    possession_lost,
+    possession_lost_per_90,
+    tackles_attempted,
+    tackles_attempted_per_90,
+    tackles_completed,
+    tackles_completed_per_90,
+    tackle_completion_ratio,
+    key_tackles,
+    key_tackles_per_90,
+    interceptions,
+    interceptions_per_90,
+    possession_won,
+    possession_won_per_90,
+    pressures_attempted,
+    pressures_attempted_per_90,
+    pressures_completed,
+    pressures_completed_per_90,
+    pressure_success_ratio,
+    blocks,
+    blocks_per_90,
+    shots_blocked_defending,
+    shots_blocked_defending_per_90,
+    clearances,
+    clearances_per_90,
+    headers_attempted,
+    headers_attempted_per_90,
+    headers_won,
+    headers_won_per_90,
+    headers_lost,
+    headers_lost_per_90,
+    headers_won_ratio,
+    key_headers,
+    key_headers_per_90,
+    clean_sheets,
+    clean_sheets_per_90,
+    clean_sheets_ratio,
+    goals_conceded,
+    goals_conceded_per_90,
+    saves,
+    saves_per_90,
+    save_ratio,
+    expected_save_percentage,
+    xgp,
+    xgp_per_90,
+    saves_held,
+    saves_held_per_90,
+    saves_parried,
+    saves_parried_per_90,
+    saves_tipped,
+    saves_tipped_per_90,
+    penalties_faced,
+    penalties_faced_per_90,
+    penalties_saved,
+    penalties_saved_per_90,
+    penalties_saved_ratio,
+    fouls_made,
+    fouls_made_per_90,
+    fouls_against,
+    fouls_against_per_90,
+    yellow_cards,
+    yellow_cards_per_90,
+    red_cards,
+    red_cards_per_90,
+    offsides,
+    offsides_per_90,
+    mistakes_leading_to_goal,
+    mistakes_leading_to_goal_per_90,
+    average_rating,
+    player_of_the_match,
+    player_of_the_match_per_90,
+    games_won,
+    games_drawn,
+    games_lost,
+    game_win_ratio,
+    team_goals,
+    team_goals_per_90
+)
+SELECT
+    snapshot_id,
+    player_uid,
+    starts,
+    substitute_appearances,
+    minutes,
+    CASE WHEN percentiles_json IS NOT NULL THEN '{}' END,
+    json_extract(statistics_json, '$.goals'),
+    json_extract(statistics_json, '$.goals_per_90'),
+    json_extract(statistics_json, '$.goals_from_outside_the_box'),
+    json_extract(statistics_json, '$.goals_from_outside_the_box_per_90'),
+    json_extract(statistics_json, '$.xg'),
+    json_extract(statistics_json, '$.xg_per_90'),
+    json_extract(statistics_json, '$.\"np-xg\"'),
+    json_extract(statistics_json, '$.\"np-xg_per_90\"'),
+    json_extract(statistics_json, '$.\"xg-op\"'),
+    json_extract(statistics_json, '$.\"xg-op_per_90\"'),
+    json_extract(statistics_json, '$.xg_per_shot'),
+    json_extract(statistics_json, '$.shots'),
+    json_extract(statistics_json, '$.shots_per_90'),
+    json_extract(statistics_json, '$.shots_from_outside_the_box'),
+    json_extract(statistics_json, '$.shots_from_outside_the_box_per_90'),
+    json_extract(statistics_json, '$.shots_on_target'),
+    json_extract(statistics_json, '$.shots_on_target_per_90'),
+    json_extract(statistics_json, '$.penalties_taken'),
+    json_extract(statistics_json, '$.penalties_taken_per_90'),
+    json_extract(statistics_json, '$.penalties_scored'),
+    json_extract(statistics_json, '$.penalties_scored_per_90'),
+    json_extract(statistics_json, '$.penalties_scored_ratio'),
+    json_extract(statistics_json, '$.free_kicks'),
+    json_extract(statistics_json, '$.free_kicks_per_90'),
+    json_extract(statistics_json, '$.minutes_per_goal'),
+    json_extract(statistics_json, '$.minutes_per_goal_or_assist'),
+    json_extract(statistics_json, '$.assists'),
+    json_extract(statistics_json, '$.assists_per_90'),
+    json_extract(statistics_json, '$.xa'),
+    json_extract(statistics_json, '$.xa_per_90'),
+    json_extract(statistics_json, '$.chances_created'),
+    json_extract(statistics_json, '$.chances_created_per_90'),
+    json_extract(statistics_json, '$.clear_cut_chances_created'),
+    json_extract(statistics_json, '$.clear_cut_chances_created_per_90'),
+    json_extract(statistics_json, '$.key_passes'),
+    json_extract(statistics_json, '$.key_passes_per_90'),
+    json_extract(statistics_json, '$.open_play_key_passes'),
+    json_extract(statistics_json, '$.open_play_key_passes_per_90'),
+    json_extract(statistics_json, '$.crosses_attempted'),
+    json_extract(statistics_json, '$.crosses_attempted_per_90'),
+    json_extract(statistics_json, '$.crosses_completed'),
+    json_extract(statistics_json, '$.crosses_completed_per_90'),
+    json_extract(statistics_json, '$.cross_completion_ratio'),
+    json_extract(statistics_json, '$.open_play_crosses_attempted'),
+    json_extract(statistics_json, '$.open_play_crosses_attempted_per_90'),
+    json_extract(statistics_json, '$.open_play_crosses_completed'),
+    json_extract(statistics_json, '$.open_play_crosses_completed_per_90'),
+    json_extract(statistics_json, '$.open_play_cross_completion_ratio'),
+    json_extract(statistics_json, '$.minutes_per_assist'),
+    json_extract(statistics_json, '$.passes_attempted'),
+    json_extract(statistics_json, '$.passes_attempted_per_90'),
+    json_extract(statistics_json, '$.passes_completed'),
+    json_extract(statistics_json, '$.passes_completed_per_90'),
+    json_extract(statistics_json, '$.pass_completion_ratio'),
+    json_extract(statistics_json, '$.progressive_passes'),
+    json_extract(statistics_json, '$.progressive_passes_per_90'),
+    json_extract(statistics_json, '$.dribbles_made'),
+    json_extract(statistics_json, '$.dribbles_made_per_90'),
+    json_extract(statistics_json, '$.distance_covered'),
+    json_extract(statistics_json, '$.distance_covered_per_90'),
+    json_extract(statistics_json, '$.high_intensity_sprints'),
+    json_extract(statistics_json, '$.high_intensity_sprints_per_90'),
+    json_extract(statistics_json, '$.possession_lost'),
+    json_extract(statistics_json, '$.possession_lost_per_90'),
+    json_extract(statistics_json, '$.tackles_attempted'),
+    json_extract(statistics_json, '$.tackles_attempted_per_90'),
+    json_extract(statistics_json, '$.tackles_completed'),
+    json_extract(statistics_json, '$.tackles_completed_per_90'),
+    json_extract(statistics_json, '$.tackle_completion_ratio'),
+    json_extract(statistics_json, '$.key_tackles'),
+    json_extract(statistics_json, '$.key_tackles_per_90'),
+    json_extract(statistics_json, '$.interceptions'),
+    json_extract(statistics_json, '$.interceptions_per_90'),
+    json_extract(statistics_json, '$.possession_won'),
+    json_extract(statistics_json, '$.possession_won_per_90'),
+    json_extract(statistics_json, '$.pressures_attempted'),
+    json_extract(statistics_json, '$.pressures_attempted_per_90'),
+    json_extract(statistics_json, '$.pressures_completed'),
+    json_extract(statistics_json, '$.pressures_completed_per_90'),
+    json_extract(statistics_json, '$.pressure_success_ratio'),
+    json_extract(statistics_json, '$.blocks'),
+    json_extract(statistics_json, '$.blocks_per_90'),
+    json_extract(statistics_json, '$.shots_blocked_defending'),
+    json_extract(statistics_json, '$.shots_blocked_defending_per_90'),
+    json_extract(statistics_json, '$.clearances'),
+    json_extract(statistics_json, '$.clearances_per_90'),
+    json_extract(statistics_json, '$.headers_attempted'),
+    json_extract(statistics_json, '$.headers_attempted_per_90'),
+    json_extract(statistics_json, '$.headers_won'),
+    json_extract(statistics_json, '$.headers_won_per_90'),
+    json_extract(statistics_json, '$.headers_lost'),
+    json_extract(statistics_json, '$.headers_lost_per_90'),
+    json_extract(statistics_json, '$.headers_won_ratio'),
+    json_extract(statistics_json, '$.key_headers'),
+    json_extract(statistics_json, '$.key_headers_per_90'),
+    json_extract(statistics_json, '$.clean_sheets'),
+    json_extract(statistics_json, '$.clean_sheets_per_90'),
+    json_extract(statistics_json, '$.clean_sheets_ratio'),
+    json_extract(statistics_json, '$.goals_conceded'),
+    json_extract(statistics_json, '$.goals_conceded_per_90'),
+    json_extract(statistics_json, '$.saves'),
+    json_extract(statistics_json, '$.saves_per_90'),
+    json_extract(statistics_json, '$.save_ratio'),
+    json_extract(statistics_json, '$.expected_save_percentage'),
+    json_extract(statistics_json, '$.xgp'),
+    json_extract(statistics_json, '$.xgp_per_90'),
+    json_extract(statistics_json, '$.saves_held'),
+    json_extract(statistics_json, '$.saves_held_per_90'),
+    json_extract(statistics_json, '$.saves_parried'),
+    json_extract(statistics_json, '$.saves_parried_per_90'),
+    json_extract(statistics_json, '$.saves_tipped'),
+    json_extract(statistics_json, '$.saves_tipped_per_90'),
+    json_extract(statistics_json, '$.penalties_faced'),
+    json_extract(statistics_json, '$.penalties_faced_per_90'),
+    json_extract(statistics_json, '$.penalties_saved'),
+    json_extract(statistics_json, '$.penalties_saved_per_90'),
+    json_extract(statistics_json, '$.penalties_saved_ratio'),
+    json_extract(statistics_json, '$.fouls_made'),
+    json_extract(statistics_json, '$.fouls_made_per_90'),
+    json_extract(statistics_json, '$.fouls_against'),
+    json_extract(statistics_json, '$.fouls_against_per_90'),
+    json_extract(statistics_json, '$.yellow_cards'),
+    json_extract(statistics_json, '$.yellow_cards_per_90'),
+    json_extract(statistics_json, '$.red_cards'),
+    json_extract(statistics_json, '$.red_cards_per_90'),
+    json_extract(statistics_json, '$.offsides'),
+    json_extract(statistics_json, '$.offsides_per_90'),
+    json_extract(statistics_json, '$.mistakes_leading_to_goal'),
+    json_extract(statistics_json, '$.mistakes_leading_to_goal_per_90'),
+    json_extract(statistics_json, '$.average_rating'),
+    json_extract(statistics_json, '$.player_of_the_match'),
+    json_extract(statistics_json, '$.player_of_the_match_per_90'),
+    json_extract(statistics_json, '$.games_won'),
+    json_extract(statistics_json, '$.games_drawn'),
+    json_extract(statistics_json, '$.games_lost'),
+    json_extract(statistics_json, '$.game_win_ratio'),
+    json_extract(statistics_json, '$.team_goals'),
+    json_extract(statistics_json, '$.team_goals_per_90')
+FROM player_moneyball_stats_json
+ORDER BY rowid;
+
+DROP TABLE player_moneyball_stats_json;
+";
+
 pub const STAFF_ASSIGNMENT_TARGETS_RESET_SQL: &str = "
 DELETE FROM staff_assignment_targets;
 ";
@@ -1654,6 +2113,11 @@ pub fn all() -> &'static [Migration] {
             description: "add_club_uid_indexes",
             sql: CLUB_INDEXES_V65_SQL,
         },
+        Migration {
+            version: 66,
+            description: "store_season_statistics_in_columns",
+            sql: SEASON_STATISTIC_COLUMNS_V66_SQL,
+        },
     ]
 }
 
@@ -1995,7 +2459,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read v45 version"),
-            65
+            66
         );
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
@@ -2095,7 +2559,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read v45 version"),
-            65
+            66
         );
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM planner_tactic_lanes", [], |row| {
@@ -2120,7 +2584,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read reapplied version"),
-            65
+            66
         );
         assert_eq!(
             tactic::get_tactic(&conn, 1).expect("read preserved tactic"),
@@ -2524,7 +2988,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         assert_player_sort_index_inventory(&conn);
 
         let demo_value_exists: bool = conn
@@ -2642,7 +3106,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         assert_player_sort_index_inventory(&conn);
         assert_eq!(
             conn.query_row(
@@ -2723,7 +3187,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         let player_columns = table_columns(&conn, "players");
         assert!(player_columns.contains(&"potential_attributes_json".to_string()));
         assert!(player_columns.contains(&"potential_projection_model_version".to_string()));
@@ -3064,13 +3528,11 @@ mod tests {
                      career_goals, career_assists, imported_at_utc
                  ) FROM player_youth_career_stats ORDER BY save_id, player_uid",
             ),
+            // The columns that migration 66 keeps; it moves the statistics into their own.
             (
                 "player_moneyball_stats",
                 "SELECT json_array(
-                     snapshot_id, player_uid, asking_price_kind,
-                     asking_price_lower_eur, asking_price_upper_eur, starts,
-                     substitute_appearances, minutes, statistics_json,
-                     imported_at_utc
+                     snapshot_id, player_uid, starts, substitute_appearances, minutes
                  ) FROM player_moneyball_stats ORDER BY snapshot_id, player_uid",
             ),
         ];
@@ -3248,7 +3710,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         let settings: Vec<(i64, String, String)> = conn
             .prepare(
                 "SELECT save_id, team, display_name
@@ -3433,9 +3895,17 @@ mod tests {
             assert_eq!(
                 query_json_rows(&conn, query),
                 *rows_before,
-                "{table} changed during migrations 29 and 30"
+                "{table} changed during the later migrations"
             );
         }
+        let expected_goals: f64 = conn
+            .query_row(
+                "SELECT xg FROM player_moneyball_stats WHERE player_uid = 77",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read the migrated statistic");
+        assert_eq!(expected_goals, 4.5);
     }
 
     #[test]
@@ -3479,22 +3949,18 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
+        // Migration 66 keeps the playing time and the statistics, each in its own column.
         type MoneyballRow = (
-            Option<String>,
             Option<i64>,
             Option<i64>,
             Option<i64>,
             Option<i64>,
-            String,
-            String,
             Option<String>,
         );
         let row: MoneyballRow = conn
             .query_row(
-                "SELECT asking_price_kind, asking_price_lower_eur, starts,
-                        substitute_appearances, minutes, statistics_json, imported_at_utc,
-                        percentiles_json
+                "SELECT starts, substitute_appearances, minutes, goals, percentiles_json
                  FROM player_moneyball_stats
                  WHERE snapshot_id = ?1 AND player_uid = 77",
                 [snapshot_id],
@@ -3505,26 +3971,11 @@ mod tests {
                         row.get(2)?,
                         row.get(3)?,
                         row.get(4)?,
-                        row.get(5)?,
-                        row.get(6)?,
-                        row.get(7)?,
                     ))
                 },
             )
             .expect("read preserved v29 Moneyball row");
-        assert_eq!(
-            row,
-            (
-                Some("single".to_string()),
-                Some(2_500_000),
-                Some(12),
-                Some(4),
-                Some(1_080),
-                "{\"goals\":7}".to_string(),
-                "2026-08-19T00:00:00.000Z".to_string(),
-                None,
-            )
-        );
+        assert_eq!(row, (Some(12), Some(4), Some(1_080), Some(7), None));
         conn.execute(
             "UPDATE player_moneyball_stats
              SET percentiles_json = '{\"goals\":50}'
@@ -3662,7 +4113,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         let existing: i64 = conn
             .query_row("SELECT reveal_hidden_information FROM saves", [], |row| {
                 row.get(0)
@@ -3762,7 +4213,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -3842,7 +4293,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         // v39 drops normalized tables
         for table in ["player_role_scores", "player_potential_role_scores"] {
             let exists: bool = conn
@@ -4141,19 +4592,15 @@ mod tests {
                 "imported_at_utc",
             ]
         );
+        // Then one column for each season statistic (see `moneyball::columns`).
         assert_eq!(
-            table_columns(&conn, "player_moneyball_stats"),
+            table_columns(&conn, "player_moneyball_stats")[..6],
             [
                 "snapshot_id",
                 "player_uid",
-                "asking_price_kind",
-                "asking_price_lower_eur",
-                "asking_price_upper_eur",
                 "starts",
                 "substitute_appearances",
                 "minutes",
-                "statistics_json",
-                "imported_at_utc",
                 "percentiles_json",
             ]
         );
@@ -4215,16 +4662,14 @@ mod tests {
         )
         .expect("insert legacy Moneyball stats");
         conn.execute(
-            "INSERT INTO player_moneyball_stats (
-                snapshot_id, player_uid, asking_price_kind, asking_price_lower_eur, statistics_json
-             ) VALUES (?1, 77, 'single', 5000000, '{}')",
+            "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, goals)
+             VALUES (?1, 77, 5)",
             [snapshot_id],
         )
         .expect("insert moneyball stats");
         let error = conn
             .execute(
-                "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
-                 VALUES (?1, 77, '{}')",
+                "INSERT INTO player_moneyball_stats (snapshot_id, player_uid) VALUES (?1, 77)",
                 [snapshot_id],
             )
             .expect_err("reject duplicate moneyball player row");
@@ -4234,8 +4679,7 @@ mod tests {
         );
         let error = conn
             .execute(
-                "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
-                 VALUES (?1, 88, '{}')",
+                "INSERT INTO player_moneyball_stats (snapshot_id, player_uid) VALUES (?1, 88)",
                 [snapshot_id],
             )
             .expect_err("reject Moneyball player outside the snapshot");
@@ -4278,7 +4722,7 @@ mod tests {
     }
 
     #[test]
-    fn csv_enrichment_schema_rejects_invalid_values_and_asking_price_shapes() {
+    fn csv_enrichment_schema_rejects_invalid_values() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("csv-enrichment-constraint-test.db"));
         conn.execute("INSERT INTO saves (name) VALUES ('CSV save')", [])
@@ -4294,43 +4738,6 @@ mod tests {
             insert_player(&conn, snapshot_id, player_uid);
         }
 
-        for (player_uid, kind, lower, upper) in [
-            (1, None, None, None),
-            (2, Some("single"), Some(5_000_000), None),
-            (3, Some("range"), Some(5_000_000), Some(8_000_000)),
-            (4, Some("not_for_sale"), None, None),
-        ] {
-            conn.execute(
-                "INSERT INTO player_moneyball_stats (
-                    snapshot_id, player_uid, asking_price_kind, asking_price_lower_eur,
-                    asking_price_upper_eur, statistics_json
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, '{}')",
-                params![snapshot_id, player_uid, kind, lower, upper],
-            )
-            .expect("insert valid asking-price shape");
-        }
-
-        for (player_uid, kind, lower, upper) in [
-            (5, Some("single"), None, None),
-            (6, Some("range"), Some(8_000_000), Some(5_000_000)),
-            (7, Some("not_for_sale"), Some(1), None),
-            (8, None, Some(1), None),
-        ] {
-            let error = conn
-                .execute(
-                    "INSERT INTO player_moneyball_stats (
-                        snapshot_id, player_uid, asking_price_kind, asking_price_lower_eur,
-                        asking_price_upper_eur, statistics_json
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, '{}')",
-                    params![snapshot_id, player_uid, kind, lower, upper],
-                )
-                .expect_err("reject invalid asking-price shape");
-            assert_eq!(
-                error.sqlite_error_code(),
-                Some(rusqlite::ErrorCode::ConstraintViolation)
-            );
-        }
-
         for (statement, params) in [
             (
                 "INSERT INTO player_youth_career_stats (save_id, player_uid, career_goals)
@@ -4338,20 +4745,18 @@ mod tests {
                 params![save_id],
             ),
             (
-                "INSERT INTO player_moneyball_stats (
-                    snapshot_id, player_uid, starts, statistics_json
-                 ) VALUES (?1, 10, -1, '{}')",
+                "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, starts)
+                 VALUES (?1, 10, -1)",
                 params![snapshot_id],
             ),
             (
-                "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
-                 VALUES (?1, 11, '[]')",
+                "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, minutes)
+                 VALUES (?1, 11, -1)",
                 params![snapshot_id],
             ),
             (
-                "INSERT INTO player_moneyball_stats (
-                    snapshot_id, player_uid, asking_price_kind, asking_price_lower_eur, statistics_json
-                 ) VALUES (?1, 12, 'single', -1, '{}')",
+                "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, percentiles_json)
+                 VALUES (?1, 12, '[]')",
                 params![snapshot_id],
             ),
         ] {
@@ -4401,7 +4806,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, managed_club_settings.club_name
@@ -4472,7 +4877,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -4659,7 +5064,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         let primary_club: String = conn
             .query_row(
                 "SELECT club_name FROM managed_club_settings WHERE save_id = ?1",
@@ -4707,7 +5112,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -4948,7 +5353,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -5063,7 +5468,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
 
         for table in [
             "player_role_scores",
@@ -5524,7 +5929,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -5577,7 +5982,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -5643,7 +6048,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("check normalized absence");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         assert_eq!(staff_count, 1);
         assert!(!normalized_exists);
     }
@@ -5909,7 +6314,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
     }
 
     #[test]
@@ -5943,7 +6348,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -5983,7 +6388,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 65, "legacy version {legacy_version}");
+            assert_eq!(version, 66, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -6060,7 +6465,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 65);
+        assert_eq!(migrations.len(), 66);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -6278,7 +6683,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read v45 version"),
-            65
+            66
         );
         let targets = conn
             .prepare(
@@ -6639,7 +7044,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read v42 version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         assert_eq!(table_columns(&conn, "player_role_metrics").len(), 162);
         let row_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| {
@@ -7356,7 +7761,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 65);
+        assert_eq!(version, 66);
         // Complete current rows are copied; a partial row and the complete historical row are not.
         assert_eq!(
             query_json_rows(
@@ -7434,5 +7839,214 @@ mod tests {
             explicit_indexes.is_empty(),
             "unexpected compact indexes: {explicit_indexes:?}"
         );
+    }
+
+    #[test]
+    fn v66_moves_each_season_statistic_into_its_own_column() {
+        use crate::features::moneyball::columns::{statistic_column, StatisticColumns};
+        use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
+
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 65) {
+            conn.execute_batch(migration.sql).expect("apply migration");
+        }
+        conn.pragma_update(None, "user_version", 65)
+            .expect("set v65");
+        conn.execute(
+            "INSERT INTO saves (id, name, is_active) VALUES (1, 'Save', 1)",
+            [],
+        )
+        .expect("insert save");
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![1, true, false, Option::<i64>::None],
+        )
+        .expect("insert snapshot");
+        let snapshot = conn.last_insert_rowid();
+
+        // Every statistic of the first player: no value for every fifth, and otherwise a
+        // count or a decimal of up to 17 digits, some of them negative or whole.
+        let value = |index: usize| -> Option<f64> {
+            match index % 5 {
+                0 => None,
+                1 => Some((index * 13) as f64),
+                2 => Some(index as f64 / 4.0),
+                _ => Some(index as f64 / 7.0 - 3.0),
+            }
+        };
+        let complete = MONEYBALL_STATISTIC_KEYS
+            .iter()
+            .enumerate()
+            .map(|(index, key)| match (value(index), index % 5) {
+                (None, _) => format!("\"{key}\":null"),
+                (Some(count), 1) => format!("\"{key}\":{}", count as u32),
+                (Some(decimal), _) => format!("\"{key}\":{decimal:?}"),
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        // Stored in this order, which is not their order by player.
+        for (uid, starts, statistics, percentiles) in [
+            (
+                30_i64,
+                Some(18_i64),
+                format!("{{{complete}}}"),
+                Some(r#"{"goals":50}"#),
+            ),
+            (
+                10,
+                None,
+                r#"{"goals":3,"np-xg":0.30000000000000004,"xg-op_per_90":-0.125}"#.to_string(),
+                Some("{}"),
+            ),
+            (20, Some(0), "{}".to_string(), None),
+        ] {
+            insert_player(&conn, snapshot, uid);
+            conn.execute(
+                "INSERT INTO player_moneyball_stats (
+                    snapshot_id, player_uid, starts, substitute_appearances, minutes,
+                    statistics_json, percentiles_json
+                 ) VALUES (?1, ?2, ?3, 3, 1500, ?4, ?5)",
+                params![snapshot, uid, starts, statistics, percentiles],
+            )
+            .expect("insert v65 statistics row");
+        }
+
+        apply(&conn).expect("apply v66");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user version");
+        assert_eq!(version, 66);
+        let columns = table_columns(&conn, "player_moneyball_stats");
+        assert_eq!(
+            columns[..6],
+            [
+                "snapshot_id",
+                "player_uid",
+                "starts",
+                "substitute_appearances",
+                "minutes",
+                "percentiles_json"
+            ]
+        );
+        assert_eq!(columns.len(), 6 + MONEYBALL_STATISTIC_KEYS.len());
+        let leftover_tables: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name LIKE 'player_moneyball_stats_json%'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count leftover tables");
+        assert_eq!(leftover_tables, 0);
+
+        // Rows keep their stored order, playing time, and scored-row marker, which holds
+        // nothing but an empty object.
+        let statistics = StatisticColumns::all();
+        let rows = conn
+            .prepare(&format!(
+                "SELECT stats.player_uid, stats.starts, stats.substitute_appearances,
+                        stats.minutes, stats.percentiles_json{}
+                 FROM player_moneyball_stats stats ORDER BY stats.rowid",
+                statistics.appended_sql("stats")
+            ))
+            .expect("prepare migrated rows")
+            .query_map([], |row| {
+                Ok((
+                    (
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Option<i64>>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                    ),
+                    statistics.read(row, 5)?,
+                ))
+            })
+            .expect("query migrated rows")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read migrated rows");
+        assert_eq!(
+            rows.iter().map(|(row, _)| row.clone()).collect::<Vec<_>>(),
+            [
+                (30, Some(18), 3, 1500, Some("{}".to_string())),
+                (10, None, 3, 1500, Some("{}".to_string())),
+                (20, Some(0), 3, 1500, None),
+            ]
+        );
+        // Every value is the one the JSON held, to the last bit.
+        for (index, stored) in rows[0].1.iter().enumerate() {
+            assert_eq!(
+                (!stored.is_nan()).then(|| stored.to_bits()),
+                value(index).map(f64::to_bits),
+                "{}",
+                MONEYBALL_STATISTIC_KEYS[index]
+            );
+        }
+        let partial = |key: &str| {
+            let index = MONEYBALL_STATISTIC_KEYS
+                .iter()
+                .position(|known| *known == key)
+                .expect("catalog key");
+            rows[1].1[index]
+        };
+        assert_eq!(partial("goals"), 3.0);
+        assert_eq!(partial("np-xg"), 0.30000000000000004);
+        assert_eq!(partial("xg-op_per_90"), -0.125);
+        assert_eq!(rows[1].1.iter().filter(|value| !value.is_nan()).count(), 3);
+        assert!(rows[2].1.iter().all(|value| value.is_nan()));
+
+        // A count stays an integer and any other statistic a real number, as
+        // `json_extract` gave them.
+        let types = |index: usize| -> String {
+            conn.query_row(
+                &format!(
+                    "SELECT typeof({}) FROM player_moneyball_stats WHERE player_uid = 30",
+                    statistic_column(index)
+                ),
+                [],
+                |row| row.get(0),
+            )
+            .expect("read stored type")
+        };
+        let index_of = |key: &str| {
+            MONEYBALL_STATISTIC_KEYS
+                .iter()
+                .position(|known| *known == key)
+                .expect("catalog key")
+        };
+        // `xg_per_shot` (10) is null, `shots` (11) a count, `shots_per_90` (12) the whole
+        // decimal 3.0, and `xg-op_per_90` (9) a fraction.
+        assert_eq!(types(index_of("xg_per_shot")), "null");
+        assert_eq!(types(index_of("shots")), "integer");
+        assert_eq!(value(index_of("shots_per_90")), Some(3.0));
+        assert_eq!(types(index_of("shots_per_90")), "real");
+        assert_eq!(types(index_of("xg-op_per_90")), "real");
+
+        // The new table still follows its player and its snapshot.
+        assert!(
+            conn.execute(
+                "INSERT INTO player_moneyball_stats (snapshot_id, player_uid) VALUES (?1, 999)",
+                [snapshot],
+            )
+            .is_err(),
+            "a statistics row needs its player"
+        );
+        conn.execute(
+            "DELETE FROM players WHERE snapshot_id = ?1 AND uid = 10",
+            [snapshot],
+        )
+        .expect("delete player");
+        let remaining = |conn: &Connection| -> i64 {
+            conn.query_row("SELECT COUNT(*) FROM player_moneyball_stats", [], |row| {
+                row.get(0)
+            })
+            .expect("count statistics rows")
+        };
+        assert_eq!(remaining(&conn), 2);
+        conn.execute("DELETE FROM snapshots WHERE id = ?1", [snapshot])
+            .expect("delete snapshot");
+        assert_eq!(remaining(&conn), 0);
     }
 }
