@@ -80,6 +80,7 @@ import {
   resolveMovePlannerPlayerIpcMock,
   resolveOptimizePlannerDepthIpcMock,
   resolvePlannerDepthIpcMock,
+  resolvePlannerDevelopmentIpcMock,
   resolvePlannerLoanCandidatesIpcMock,
   resolvePlannerRoleReferenceIpcMock,
   resolvePlannerSlotCandidatesIpcMock,
@@ -91,6 +92,7 @@ import {
   resolveSavePlannerTeamsIpcMock,
   resolveSetManagedClubIpcMock,
   resolveSetPlannerAssignmentPinnedIpcMock,
+  resolveSetPlannerOptimizeForIpcMock,
 } from "@/testing/planner-ipc-mock";
 import {
   resetGetPlayerOverride,
@@ -434,6 +436,14 @@ function registerIpcMocks() {
 
     if (cmd === "get_planner_loan_candidates") {
       return resolvePlannerLoanCandidatesIpcMock();
+    }
+
+    if (cmd === "get_planner_development") {
+      return resolvePlannerDevelopmentIpcMock();
+    }
+
+    if (cmd === "set_planner_optimize_for") {
+      return resolveSetPlannerOptimizeForIpcMock(args);
     }
 
     if (cmd === "move_planner_player") {

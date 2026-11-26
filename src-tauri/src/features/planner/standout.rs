@@ -6,11 +6,13 @@
 //! each slot shows that instead.
 
 use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use rusqlite::{params, Connection};
 
 use crate::features::player_metrics::compact::{
-    player_current_column, player_metrics_join, player_potential_column, PLAYER_METRICS_ALIAS,
+    player_current_column, player_metrics_join, player_potential_column, scores_revision,
+    PLAYER_METRICS_ALIAS,
 };
 use crate::features::scoring::combine::combine_role_scores;
 
@@ -136,7 +138,19 @@ impl SlotRankings {
         development: &Development,
         lane_scores: &[Option<(u8, u8)>],
     ) -> Option<usize> {
-        let future = future_weight(team, development);
+        self.lane_by_rank(future_weight(team, development), lane_scores)
+    }
+
+    /// The lane the player is growing into: the one where his potential fit score ranks
+    /// highest against the save, whatever he scores now. Level lanes go as in
+    /// [`Self::standout_lane`].
+    pub(super) fn development_lane(&self, lane_scores: &[Option<(u8, u8)>]) -> Option<usize> {
+        self.lane_by_rank(1.0, lane_scores)
+    }
+
+    /// The lane where the player's ranks stand highest, weighing his potential rank by `future`
+    /// and his current rank by the rest.
+    fn lane_by_rank(&self, future: f64, lane_scores: &[Option<(u8, u8)>]) -> Option<usize> {
         let mut standout: Option<(usize, f64, u8)> = None;
         for (lane_index, scores) in lane_scores.iter().enumerate() {
             let Some((current, potential)) = *scores else {
@@ -156,13 +170,132 @@ impl SlotRankings {
     }
 }
 
+/// What a kept [`SlotRankings`] was read from: everything a ranking reads.
+///
+/// A snapshot's players, positions, and feet are written once, when Load Data ingests it under
+/// a token of its own. Its role scores change later only through `compact`, which counts those
+/// writes. So this key holds across every other write, such as a Planner assignment or a
+/// setting, where a data generation would not.
+#[derive(PartialEq, Eq)]
+struct RankingsKey {
+    database: String,
+    /// The snapshot's own token. A snapshot's row ID can return after a deletion.
+    snapshot_token: String,
+    scores_revision: u64,
+    any_position: bool,
+    /// Every lane's roles, positions, weight, and foot rule: all a ranking reads of the tactic.
+    tactic: String,
+}
+
+impl RankingsKey {
+    /// The key on a read-only connection, or `None` for the writer, which always ranks in full
+    /// because it may hold changes it has yet to commit.
+    fn for_reader(
+        conn: &Connection,
+        snapshot_id: i64,
+        tactic: &PlannerTactic,
+        position_rule: PositionRule,
+    ) -> Option<Self> {
+        if !conn.is_readonly(rusqlite::MAIN_DB).ok()? {
+            return None;
+        }
+        // Read before the ranking, so a write that lands meanwhile ranks again.
+        let scores_revision = scores_revision(conn);
+        Some(Self {
+            database: conn.path()?.to_string(),
+            snapshot_token: conn
+                .query_row(
+                    "SELECT context_token FROM snapshots WHERE id = ?1",
+                    [snapshot_id],
+                    |row| row.get(0),
+                )
+                .ok()?,
+            scores_revision,
+            any_position: position_rule == PositionRule::AnyPosition,
+            tactic: tactic
+                .lanes
+                .iter()
+                .map(|lane| {
+                    format!(
+                        "{}|{}|{}|{}|{}|{}|{};",
+                        lane.ip_position,
+                        lane.ip_role_id,
+                        lane.oop_position,
+                        lane.oop_role_id,
+                        lane.ip_weight.to_bits(),
+                        lane.preferred_foot,
+                        lane.foot_preference
+                    )
+                })
+                .collect(),
+        })
+    }
+}
+
+/// The rankings last read, newest last. A handful covers both position rules of the open
+/// database; tests open more.
+const KEPT_RANKINGS: usize = 4;
+
+type KeptRankings = Vec<(RankingsKey, Arc<SlotRankings>)>;
+
+fn kept_rankings() -> MutexGuard<'static, KeptRankings> {
+    static KEPT: OnceLock<Mutex<KeptRankings>> = OnceLock::new();
+    KEPT.get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
+
+/// [`load_slot_rankings`], kept for readers until the snapshot, its role scores, or the tactic
+/// change ([`RankingsKey`]). The Training workspace, the Squad overview, the Planner board, and
+/// Best role fit all ask for the same rankings, and each ranking reads the whole snapshot. Two
+/// readers that miss together rank once: the second waits for the first.
+pub(super) fn slot_rankings(
+    conn: &Connection,
+    snapshot_id: i64,
+    tactic: &PlannerTactic,
+    position_rule: PositionRule,
+) -> Result<Arc<SlotRankings>, String> {
+    let Some(key) = RankingsKey::for_reader(conn, snapshot_id, tactic, position_rule) else {
+        return load_slot_rankings(conn, snapshot_id, tactic, position_rule).map(Arc::new);
+    };
+    let find_kept = || {
+        kept_rankings()
+            .iter()
+            .find(|(kept, _)| *kept == key)
+            .map(|(_, rankings)| Arc::clone(rankings))
+    };
+    if let Some(rankings) = find_kept() {
+        return Ok(rankings);
+    }
+    static RANKING: Mutex<()> = Mutex::new(());
+    let _ranking = RANKING.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(rankings) = find_kept() {
+        return Ok(rankings);
+    }
+    let rankings = Arc::new(load_slot_rankings(
+        conn,
+        snapshot_id,
+        tactic,
+        position_rule,
+    )?);
+    let mut kept = kept_rankings();
+    // Rankings of this database's earlier snapshots and scores will not be asked for again.
+    kept.retain(|(other, _)| {
+        other.database != key.database
+            || (other.snapshot_token == key.snapshot_token
+                && other.scores_revision == key.scores_revision)
+    });
+    if kept.len() >= KEPT_RANKINGS {
+        kept.remove(0);
+    }
+    kept.push((key, Arc::clone(&rankings)));
+    Ok(rankings)
+}
+
 /// Ranks every lane of `tactic` over all of the snapshot's players. A player counts in a lane
 /// when he can play its positions and has the role scores, and `position_rule` scores him
-/// there as Optimize does.
-///
-// ponytail: every call reads the whole snapshot once, for Optimize and for Best role fit.
-// Upgrade to rankings kept per snapshot and tactic if that read takes over a second on a
-// real save.
+/// there as Optimize does. Every call reads the whole snapshot once; readers ask
+/// [`slot_rankings`] instead.
 pub(super) fn load_slot_rankings(
     conn: &Connection,
     snapshot_id: i64,

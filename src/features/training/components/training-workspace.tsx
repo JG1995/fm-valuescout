@@ -1,14 +1,35 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Dumbbell, MapPinOff, TriangleAlert } from "lucide-react";
+import { Dumbbell, MapPinOff, Split, TriangleAlert } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
 import { Panel } from "@/components/ui/panel/panel";
 import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
 import { StatusChip } from "@/components/ui/status-chip/status-chip";
-import { applyFmTraining, fmTrainingQueryOptions } from "../api/fm-training";
-import type { FmTrainingPlayer, FmTrainingResult } from "../types/fm-training";
+import {
+  applyFmTraining,
+  fmTrainingQueryOptions,
+  setDevelopmentMaxAge,
+  setDevelopmentPositionFamiliarity,
+  setDevelopmentSlot,
+  setTrainingBasis,
+  trainingKeys,
+} from "../api/fm-training";
+import type {
+  FmTrainingPlayer,
+  FmTrainingResult,
+  TrainingBasis,
+} from "../types/fm-training";
+import {
+  DevelopmentPipeline,
+  DevelopsAsCell,
+  groupOf,
+  placement,
+  type SlotGroup,
+  slotGroups,
+  TrainForControl,
+} from "./training-development";
 
 const headingClass =
   "sticky top-0 z-10 bg-surface-container-lowest px-3 py-2 text-label-md text-on-surface-variant";
@@ -35,8 +56,20 @@ function groupLabel(player: FmTrainingPlayer) {
     : NO_SQUAD;
 }
 
-/** Every player, each Planner squad, the players in no squad, and the players learning a position. */
-function trainingFilters(planned: readonly FmTrainingPlayer[]) {
+/** A player who plays one slot and trains the roles of another. */
+function trainsAwayFromSlot(player: FmTrainingPlayer) {
+  return player.slot !== null && player.target?.development === true;
+}
+
+/**
+ * Every player, each Planner squad, the players in no squad, the players
+ * learning a position, and, while training follows development slots, the
+ * players who train away from the slot they play.
+ */
+function trainingFilters(
+  planned: readonly FmTrainingPlayer[],
+  basis: TrainingBasis,
+) {
   const filters: TrainingFilter[] = [
     { id: "all", label: "All", matches: () => true },
   ];
@@ -61,6 +94,13 @@ function trainingFilters(planned: readonly FmTrainingPlayer[]) {
       matches: (player) => player.learning !== null,
     },
   );
+  if (basis === "development") {
+    filters.push({
+      id: "away",
+      label: "Away from slot",
+      matches: trainsAwayFromSlot,
+    });
+  }
   return filters
     .map((filter) => ({
       ...filter,
@@ -84,35 +124,85 @@ function groupPlayers(listed: readonly FmTrainingPlayer[]) {
   return groups;
 }
 
+/** A change to what training follows or to a player's development slot. */
+type DevelopmentChange =
+  | { basis: TrainingBasis }
+  | { maxAge: number }
+  | { positionFamiliarity: boolean }
+  | { playerUid: number; laneId: string | null };
+
+function changeDevelopment(change: DevelopmentChange) {
+  if ("basis" in change) {
+    return setTrainingBasis(change.basis);
+  }
+  if ("maxAge" in change) {
+    return setDevelopmentMaxAge(change.maxAge);
+  }
+  if ("positionFamiliarity" in change) {
+    return setDevelopmentPositionFamiliarity(change.positionFamiliarity);
+  }
+  return setDevelopmentSlot(change.playerUid, change.laneId);
+}
+
 /**
  * The Training workspace: the individual training each player at the managed
- * club would get in FM, his Planner slot's roles and his Suggested Training,
- * and the action that sets the ticked players' training in FM.
+ * club would get in FM, the roles of his Planner slot or of the slot he is
+ * developing towards and his Suggested Training, and the action that sets the
+ * ticked players' training in FM.
  */
 export function TrainingWorkspace({
   activeSaveId,
   disabled,
+  onDevelopmentChanged,
 }: {
   activeSaveId: number;
   /** Another change to the squad is running. */
   disabled: boolean;
+  /**
+   * What training follows, or a development slot, changed: other views that
+   * show Suggested Training or development slots are stale.
+   */
+  onDevelopmentChanged?: () => void;
 }) {
   const [filterId, setFilterId] = useState("all");
+  const [slotGroupId, setSlotGroupId] = useState<string | null>(null);
   const [unticked, setUnticked] = useState<ReadonlySet<number>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const unavailableId = useId();
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
   const plan = useQuery(fmTrainingQueryOptions(activeSaveId));
   // Nothing in the app changes: snapshots do not hold training.
   const apply = useMutation({
     mutationFn: applyFmTraining,
     onSuccess: () => setConfirming(false),
   });
+  const develop = useMutation({
+    mutationFn: changeDevelopment,
+    onSuccess: async () => {
+      onDevelopmentChanged?.();
+      // The mutation stays pending until the plan shows the change.
+      await queryClient.invalidateQueries({ queryKey: trainingKeys.all });
+    },
+  });
 
   const planned = plan.data?.players ?? [];
-  const filters = trainingFilters(planned);
+  const basis = plan.data?.basis ?? "planner";
+  const maxAge = plan.data?.developmentMaxAge ?? 0;
+  const groups = slotGroups(plan.data?.lanes ?? [], planned);
+  const slotGroup =
+    basis === "development"
+      ? (groups.find((group) => group.id === slotGroupId) ?? null)
+      : null;
+  const filters = trainingFilters(planned, basis);
   const filter = filters.find((item) => item.id === filterId) ?? filters[0];
-  const listed = planned.filter(filter.matches);
+  const listed = planned
+    .filter(filter.matches)
+    .filter(
+      (player) =>
+        slotGroup === null ||
+        groupOf(groups, player.development?.laneId ?? null) === slotGroup,
+    );
   const chosen = listed.filter((player) => !unticked.has(player.playerUid));
   const unavailableReason = plan.data?.unavailableReason ?? null;
   const allTicked = listed.length > 0 && chosen.length === listed.length;
@@ -120,6 +210,10 @@ export function TrainingWorkspace({
   const learningCount = planned.filter(
     (player) => player.learning !== null,
   ).length;
+  const awayCount = planned.filter(trainsAwayFromSlot).length;
+  const changing = develop.isPending || apply.isPending;
+  // A control shows its new value at once, while the plan that follows it loads.
+  const pending = develop.isPending ? develop.variables : undefined;
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -161,14 +255,15 @@ export function TrainingWorkspace({
     >
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-4">
         <p className="max-w-[100ch] min-w-0 flex-1 basis-80 text-body-sm text-on-surface-variant">
-          The individual training each player would get in FM: his Planner
-          slot's roles, and his Suggested Training as the focus. A player who is
-          not fully familiar with a slot position trains there first.
+          {basis === "development"
+            ? `The individual training each player would get in FM. Players aged ${maxAge} or under train the roles of their development slot: the slot of your tactic where their potential ranks highest in the save. Older players train the slot they play. Each player's Suggested Training is the focus, and a player who is not fully familiar with a position he trains for learns it first.`
+            : "The individual training each player would get in FM: his Planner slot's roles, and his Suggested Training as the focus. A player who is not fully familiar with a slot position trains there first."}
         </p>
         <Button
           icon={Dumbbell}
           disabled={
             disabled ||
+            develop.isPending ||
             chosen.length === 0 ||
             unavailableReason !== null ||
             // A revisit paints the last plan while the current one loads.
@@ -200,6 +295,11 @@ export function TrainingWorkspace({
           </p>
         ) : null}
         {apply.data ? <TrainingResult result={apply.data} /> : null}
+        {develop.error ? (
+          <p className="text-body-sm text-error" role="alert">
+            Could not save the change: {errorMessage(develop.error)}
+          </p>
+        ) : null}
       </div>
       {plan.error ? (
         <div
@@ -221,15 +321,46 @@ export function TrainingWorkspace({
         </p>
       ) : (
         <>
+          <div className="shrink-0 px-4 pb-3">
+            <TrainForControl
+              basis={pending && "basis" in pending ? pending.basis : basis}
+              maxAge={pending && "maxAge" in pending ? pending.maxAge : maxAge}
+              positionFamiliarity={
+                pending && "positionFamiliarity" in pending
+                  ? pending.positionFamiliarity
+                  : (plan.data?.developmentPositionFamiliarity ?? true)
+              }
+              disabled={disabled || changing}
+              onBasisChange={(next) => develop.mutate({ basis: next })}
+              onMaxAgeChange={(next) => develop.mutate({ maxAge: next })}
+              onPositionFamiliarityChange={(next) =>
+                develop.mutate({ positionFamiliarity: next })
+              }
+            />
+          </div>
+          {basis === "development" ? (
+            <DevelopmentPipeline
+              groups={groups}
+              maxAge={maxAge}
+              selectedId={slotGroup?.id ?? null}
+              onSelect={setSlotGroupId}
+            />
+          ) : null}
           <div className="flex flex-wrap items-center justify-between gap-2 border-y border-outline-variant px-4 py-2">
             <p className="text-body-sm text-on-surface-variant">
               {players(planned.length)}
+              {basis === "development" && awayCount > 0
+                ? awayCount === 1
+                  ? " · 1 trains away from his slot"
+                  : ` · ${awayCount} train away from their slots`
+                : null}
               {learningCount > 0
                 ? ` · ${learningCount} learning a position`
                 : null}
-              {planned.every((player) => player.slot === null)
-                ? " · no one is in a Planner slot, so only focuses are set"
+              {planned.every((player) => player.target === null)
+                ? " · no one has a slot to train for, so only focuses are set"
                 : null}
+              {slotGroup ? ` · showing ${slotGroup.label}` : null}
             </p>
             <fieldset className="inline-flex flex-wrap rounded-md border border-outline bg-surface-container-high p-0.5">
               <legend className="sr-only">Show players</legend>
@@ -270,7 +401,10 @@ export function TrainingWorkspace({
                     Player
                   </th>
                   <th scope="col" className={headingClass}>
-                    Slot
+                    Plays
+                  </th>
+                  <th scope="col" className={headingClass}>
+                    Develops as
                   </th>
                   <th scope="col" className={headingClass}>
                     In possession
@@ -288,7 +422,7 @@ export function TrainingWorkspace({
                   <tr className="border-t border-outline-variant">
                     <th
                       scope="rowgroup"
-                      colSpan={6}
+                      colSpan={7}
                       className="bg-surface-container-high px-3 py-1.5 text-label-md uppercase text-on-surface-variant"
                     >
                       {group.label}
@@ -298,9 +432,16 @@ export function TrainingWorkspace({
                     <TrainingRow
                       key={player.playerUid}
                       player={player}
+                      basis={basis}
+                      maxAge={maxAge}
+                      groups={groups}
                       ticked={!unticked.has(player.playerUid)}
                       disabled={apply.isPending}
+                      developmentDisabled={disabled || changing}
                       onToggle={() => toggle(player.playerUid)}
+                      onChooseSlot={(laneId) =>
+                        develop.mutate({ playerUid: player.playerUid, laneId })
+                      }
                     />
                   ))}
                 </tbody>
@@ -336,8 +477,8 @@ export function TrainingWorkspace({
       >
         <p className="text-body-md text-on-surface-variant">
           Sets the individual training of the {players(chosen.length)} ticked in
-          the list. A player in a Planner slot gets the roles listed, and one in
-          no slot keeps his roles. Every player's additional focus becomes the
+          the list. A player gets the roles listed for him, and one whose roles
+          read Unchanged keeps his. Every player's additional focus becomes the
           one listed, and a player without one has his focus cleared. Players
           out on loan train with their loan club and are left out.
         </p>
@@ -358,16 +499,44 @@ function Muted({ children }: { children: string }) {
 
 function TrainingRow({
   player,
+  basis,
+  maxAge,
+  groups,
   ticked,
   disabled,
+  developmentDisabled,
   onToggle,
+  onChooseSlot,
 }: {
   player: FmTrainingPlayer;
+  basis: TrainingBasis;
+  maxAge: number;
+  groups: readonly SlotGroup[];
   ticked: boolean;
   disabled: boolean;
+  developmentDisabled: boolean;
   onToggle: () => void;
+  onChooseSlot: (laneId: string | null) => void;
 }) {
-  const { slot, learning } = player;
+  const { slot, target, learning } = player;
+  const away = trainsAwayFromSlot(player);
+  const developmentGroup = groupOf(groups, player.development?.laneId ?? null);
+  // What the line under the role says: the position he is learning, and, for a
+  // player who trains away from his slot, where he plays and what that costs.
+  const notes = [
+    learning
+      ? `${
+          learning.familiarity > 0
+            ? `Familiarity ${learning.familiarity} of 20`
+            : "No familiarity yet"
+        }${
+          target && learning.outOfPossession
+            ? ` · then ${target.inPossessionRole} at ${target.ipPosition}`
+            : ""
+        }`
+      : null,
+    away && slot && !slot.learning ? `Plays ${placement(slot)}` : null,
+  ].filter((note) => note !== null);
   return (
     <tr className="border-t border-outline-variant">
       <td className="px-3 py-2">
@@ -394,14 +563,24 @@ function TrainingRow({
       </th>
       <td className="px-3 py-2 font-mono text-mono-sm text-on-surface-variant">
         {slot ? (
-          slot.ipPosition === slot.oopPosition ? (
-            slot.ipPosition
-          ) : (
-            `${slot.ipPosition}/${slot.oopPosition}`
-          )
+          placement(slot)
         ) : (
           <span className="font-sans text-body-sm">No slot</span>
         )}
+      </td>
+      <td className="px-3 py-2">
+        <DevelopsAsCell
+          player={player}
+          basis={basis}
+          maxAge={maxAge}
+          sameAsSlot={
+            slot !== null &&
+            developmentGroup !== undefined &&
+            developmentGroup === groupOf(groups, slot.laneId)
+          }
+          disabled={developmentDisabled}
+          onChoose={onChooseSlot}
+        />
       </td>
       <td className="px-3 py-2">
         {player.inPossessionRole ? (
@@ -410,20 +589,26 @@ function TrainingRow({
               <span>
                 {player.inPossessionRole} <Muted>{player.position ?? ""}</Muted>
               </span>
+              {away ? (
+                <StatusChip tone="info" icon={Split}>
+                  Away from slot
+                </StatusChip>
+              ) : null}
               {learning ? (
                 <StatusChip tone="warning" icon={MapPinOff}>
                   {`Learning ${learning.position}`}
                 </StatusChip>
               ) : null}
             </span>
-            {learning ? (
+            {notes.length > 0 ? (
               <span className="block pt-0.5 text-[11px] text-on-surface-variant">
-                {learning.familiarity > 0
-                  ? `Familiarity ${learning.familiarity} of 20`
-                  : "No familiarity yet"}
-                {slot && learning.outOfPossession
-                  ? ` · then ${slot.inPossessionRole} at ${slot.ipPosition}`
-                  : null}
+                {notes.join(" · ")}
+              </span>
+            ) : null}
+            {away && slot?.learning ? (
+              // Familiarity grows only where the in-possession role is trained.
+              <span className="block pt-0.5 text-[11px] text-warning">
+                {`Plays ${placement(slot)} and stops learning ${slot.learning.position} (${slot.learning.familiarity} of 20)`}
               </span>
             ) : null}
           </>

@@ -33,6 +33,10 @@ export const plannerKeys = {
     [...plannerKeys.slotCandidates(), "loans", activeSaveId] as const,
   fmMoves: (activeSaveId: number) =>
     [...plannerKeys.all, "fm-moves", activeSaveId] as const,
+  // Development slots follow the tactic and the data, not who sits where.
+  development: (activeSaveId: number) =>
+    [...plannerKeys.all, "development", activeSaveId] as const,
+  developments: () => [...plannerKeys.all, "development"] as const,
   roleReferences: () => [...plannerKeys.all, "role-reference"] as const,
   roleReference: (activeSaveId: number, phase: string, scoreBasis: string) =>
     [...plannerKeys.roleReferences(), activeSaveId, phase, scoreBasis] as const,

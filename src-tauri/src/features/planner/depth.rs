@@ -128,10 +128,22 @@ pub struct PlannerDepthTeam {
     pub strings: Vec<PlannerString>,
 }
 
+/// How the Starter lineup that Optimize filled for development compares with the strongest
+/// one it could have filled: the players each holds and the sum of their current fit scores.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StarterComparison {
+    pub starters: usize,
+    pub score: u32,
+    pub strongest_starters: usize,
+    pub strongest_score: u32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlannerDepth {
     pub tactic: PlannerTactic,
     pub teams: Vec<PlannerDepthTeam>,
+    /// Set by Optimize squads when it builds for development; `None` on every other read.
+    pub starter_comparison: Option<StarterComparison>,
 }
 
 #[derive(Clone, Copy)]
@@ -235,7 +247,11 @@ pub(super) fn load_depth(
         });
     }
 
-    Ok(PlannerDepth { tactic, teams })
+    Ok(PlannerDepth {
+        tactic,
+        teams,
+        starter_comparison: None,
+    })
 }
 
 struct SlotCandidateRow {

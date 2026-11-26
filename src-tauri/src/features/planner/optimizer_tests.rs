@@ -4,7 +4,9 @@ use std::collections::HashSet;
 
 use super::depth::{
     assign_player, clear_all, get_depth, set_assignment_pinned, PlannerDepth, PlannerTeam,
+    StarterComparison,
 };
+use super::development::{choose_slot, set_optimize_for, set_position_familiarity, OptimizeFor};
 use super::fit::PositionRule;
 use super::optimizer::{
     self, allocate_rotation, match_lanes, unassigned_players, OptimizerCandidate,
@@ -1144,4 +1146,187 @@ fn optimizer_rolls_back_replacement_when_an_insert_fails() {
 
     assert!(error.contains("forced optimizer failure"));
     assert_eq!(assignment_provenance(&conn, 77), "optimizer");
+}
+
+/// Player 77, aged 19, plays right winger and centre forward. He is the club's best winger
+/// today, but his potential ranks below the other winger's and above every striker's, so he is
+/// developing into a centre forward. The others are 30.
+fn winger_developing_into_a_striker(
+    strikers: &[i64],
+) -> (tempfile::TempDir, rusqlite::Connection, i64) {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    let mut uids = vec![77, 201];
+    uids.extend(strikers);
+    seed_players(&temp_dir, &mut conn, save_id, &uids);
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 18, "MR": 18, "ST": 18}"#);
+    set_lane_scores(&conn, save_id, 77, "right_winger", 70, 75);
+    set_lane_scores(&conn, save_id, 77, "centre_forward", 60, 85);
+    set_player_age(&conn, save_id, 77, Some(19));
+    set_player_positions(&conn, save_id, 201, r#"{"AMR": 18, "MR": 18}"#);
+    set_lane_scores(&conn, save_id, 201, "right_winger", 50, 90);
+    set_player_age(&conn, save_id, 201, Some(30));
+    for &striker in strikers {
+        set_player_positions(&conn, save_id, striker, r#"{"ST": 18}"#);
+        set_lane_scores(&conn, save_id, striker, "centre_forward", 75, 75);
+        set_player_age(&conn, save_id, striker, Some(30));
+    }
+    (temp_dir, conn, save_id)
+}
+
+#[test]
+fn optimizing_for_development_keeps_a_young_player_in_his_development_slot() {
+    let (_temp_dir, conn, save_id) = winger_developing_into_a_striker(&[204]);
+
+    // The strongest squad starts him on the wing, where the club needs him today.
+    let strongest = optimize_depth(&conn, save_id).expect("optimize for the strongest squads");
+    assert_eq!(
+        lane_players(&strongest, PlannerTeam::Senior, "right_winger")[0],
+        Some(77)
+    );
+    assert_eq!(
+        lane_players(&strongest, PlannerTeam::Senior, "centre_forward")[0],
+        Some(204)
+    );
+    assert_eq!(strongest.starter_comparison, None);
+
+    // For development he takes only the striker's slot. The older striker is the better one
+    // today, so he sits behind him, and the weaker winger starts.
+    set_optimize_for(&conn, save_id, OptimizeFor::Development).expect("optimize for development");
+    let developed = optimize_depth(&conn, save_id).expect("optimize for development");
+    assert_eq!(
+        lane_players(&developed, PlannerTeam::Senior, "right_winger")[..2],
+        [Some(201), None]
+    );
+    assert_eq!(
+        lane_players(&developed, PlannerTeam::Senior, "centre_forward")[..2],
+        [Some(204), Some(77)]
+    );
+    assert_eq!(
+        developed.starter_comparison,
+        Some(StarterComparison {
+            starters: 2,
+            score: 50 + 75,
+            strongest_starters: 2,
+            strongest_score: 70 + 75,
+        })
+    );
+    // The comparison belongs to the Optimize result, not to the board.
+    assert_eq!(
+        get_depth(&conn, save_id)
+            .expect("read the board")
+            .starter_comparison,
+        None
+    );
+}
+
+#[test]
+fn a_development_slot_suggested_in_any_position_places_a_player_he_is_to_learn() {
+    let (_temp_dir, conn, save_id) = winger_developing_into_a_striker(&[204]);
+    // He has a striker's scores but can no longer play up front.
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 18, "MR": 18}"#);
+    set_optimize_for(&conn, save_id, OptimizeFor::Development).expect("optimize for development");
+
+    // By position he develops on the wing, where he starts.
+    let by_position = optimize_depth(&conn, save_id).expect("optimize for development");
+    assert_eq!(
+        lane_players(&by_position, PlannerTeam::Senior, "right_winger")[0],
+        Some(77)
+    );
+
+    // Suggested on role scores alone, he is growing into a striker, and Optimize puts him
+    // behind the striker although it places everyone else by position.
+    set_position_familiarity(&conn, save_id, false).expect("suggest in any position");
+    let anywhere = optimize_depth(&conn, save_id).expect("optimize for development");
+    assert_eq!(
+        lane_players(&anywhere, PlannerTeam::Senior, "centre_forward")[..2],
+        [Some(204), Some(77)]
+    );
+    assert_eq!(
+        lane_players(&anywhere, PlannerTeam::Senior, "right_winger")[0],
+        Some(201)
+    );
+    let backup = &team_strings(&anywhere, PlannerTeam::Senior)[1];
+    assert!(
+        backup
+            .assignments
+            .iter()
+            .find(|assignment| assignment.player_uid == 77)
+            .expect("77 is placed")
+            .out_of_position
+    );
+}
+
+#[test]
+fn outside_the_senior_squad_a_developing_player_takes_his_development_slot() {
+    // Three better strikers fill the senior squad's centre-forward slots.
+    let (_temp_dir, conn, save_id) = winger_developing_into_a_striker(&[204, 205, 206]);
+    set_optimize_for(&conn, save_id, OptimizeFor::Development).expect("optimize for development");
+
+    let depth = optimize_depth(&conn, save_id).expect("optimize for development");
+
+    assert_eq!(
+        lane_players(&depth, PlannerTeam::Senior, "centre_forward"),
+        vec![Some(204), Some(205), Some(206)]
+    );
+    assert_eq!(
+        lane_players(&depth, PlannerTeam::Senior, "right_winger"),
+        vec![Some(201), None, None],
+        "the wing stays closed to him"
+    );
+    assert_eq!(
+        lane_players(&depth, PlannerTeam::Reserves, "centre_forward"),
+        vec![Some(77)]
+    );
+}
+
+#[test]
+fn a_developing_player_fills_any_slot_that_trains_as_his_development_slot() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    seed_players(&temp_dir, &mut conn, save_id, &[77, 201]);
+    for (uid, age, current) in [(77, 19, 60), (201, 30, 70)] {
+        set_player_positions(&conn, save_id, uid, r#"{"DC": 18}"#);
+        set_lane_scores(&conn, save_id, uid, "left_centre_back", current, 80);
+        set_player_age(&conn, save_id, uid, Some(age));
+    }
+    set_optimize_for(&conn, save_id, OptimizeFor::Development).expect("optimize for development");
+
+    let depth = optimize_depth(&conn, save_id).expect("optimize for development");
+
+    // The two centre-back slots ask for the same roles, so both players start.
+    let starters = ["left_centre_back", "right_centre_back"]
+        .map(|lane_id| lane_players(&depth, PlannerTeam::Senior, lane_id)[0]);
+    assert_eq!(
+        starters.into_iter().flatten().collect::<HashSet<_>>(),
+        HashSet::from([77, 201])
+    );
+}
+
+#[test]
+fn a_chosen_development_slot_places_a_player_he_cannot_yet_play() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    seed_players(&temp_dir, &mut conn, save_id, &[77]);
+    set_right_winger(&conn, save_id, 77, 70, 80);
+    set_player_age(&conn, save_id, 77, Some(19));
+    // The left wing asks for the same roles at positions he has never played.
+    choose_slot(
+        &conn,
+        save_id,
+        current_snapshot_id(&conn, save_id),
+        77,
+        Some("left_winger"),
+    )
+    .expect("choose the left wing");
+    set_optimize_for(&conn, save_id, OptimizeFor::Development).expect("optimize for development");
+
+    let depth = optimize_depth(&conn, save_id).expect("optimize for development");
+
+    assert_eq!(
+        assigned_player_uid(&depth, PlannerTeam::Senior, "left_winger"),
+        Some(77)
+    );
+    assert!(out_of_position(&depth, "left_winger"));
+    assert_eq!(
+        assigned_player_uid(&depth, PlannerTeam::Senior, "right_winger"),
+        None
+    );
 }

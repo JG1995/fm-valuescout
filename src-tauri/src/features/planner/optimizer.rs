@@ -1,5 +1,6 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 
 use rusqlite::{params, Connection};
 
@@ -14,11 +15,14 @@ use crate::features::{
 use super::depth::{
     ensure_depth, insert_assignment, insert_string, load_depth, preflight_depth_snapshot,
     remove_empty_trailing_strings, AssignmentProvenance, PlannerDepth, PlannerTeam,
-    ROTATION_PLACES,
+    StarterComparison, ROTATION_PLACES,
+};
+use super::development::{
+    self, load_development_slots, same_training, OptimizeFor, PlayerDevelopment,
 };
 use super::fit::{is_goalkeeper_lane, PositionRule};
 use super::outlook::{expected_score, slot_value, Development};
-use super::standout::load_slot_rankings;
+use super::standout::slot_rankings;
 use super::tactic::{PlannerTactic, TACTIC_LANE_COUNT};
 use super::teams;
 
@@ -293,6 +297,11 @@ pub(super) fn allocate_rotation(
 /// `position_rule` decides which lanes a player can fill, in every team. Under
 /// [`PositionRule::AnyPosition`] the rankings still hold only the players who can play each
 /// slot, so a player stands out where he outscores the players who do.
+///
+/// When the save optimizes for development ([`OptimizeFor::Development`]), a player with a
+/// development slot fills only that slot or one that trains the same, in every team. He starts
+/// there when he earns it and otherwise sits behind it, and the result says what the Starter
+/// lineup gave up against the strongest one.
 pub(super) fn optimize_depth(
     conn: &Connection,
     save_id: i64,
@@ -301,6 +310,30 @@ pub(super) fn optimize_depth(
     let snapshot_id = preflight_depth_snapshot(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
     let tactic = ensure_depth(conn, save_id)?;
+    let goal = development::load_settings(conn, save_id)?;
+    let develops = goal.optimize_for == OptimizeFor::Development;
+    let has_development_teams = teams::get_team_settings(conn, save_id)?
+        .iter()
+        .any(|setting| setting.team != PlannerTeam::Senior);
+    // Development slots are suggested from the rankings of the save's own position rule, and
+    // the other squads place by those of the rule in use. One read serves both when the rules
+    // are the same.
+    let development_rankings = develops
+        .then(|| slot_rankings(conn, snapshot_id, &tactic, goal.position_rule))
+        .transpose()?;
+    let placement_rankings = match &development_rankings {
+        _ if !has_development_teams => None,
+        Some(rankings) if goal.position_rule == position_rule => Some(Arc::clone(rankings)),
+        _ => Some(slot_rankings(conn, snapshot_id, &tactic, position_rule)?),
+    };
+    let development_slots = match &development_rankings {
+        Some(rankings) => {
+            load_development_slots(conn, save_id, snapshot_id, &tactic, &goal, || {
+                Ok(Arc::clone(rankings))
+            })?
+        }
+        None => development::DevelopmentSlots::default(),
+    };
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
@@ -324,7 +357,17 @@ pub(super) fn optimize_depth(
     )
     .map_err(|error| error.to_string())?;
 
-    let players = load_club_players(&tx, save_id, snapshot_id, &tactic, position_rule)?;
+    let free_players = load_club_players(&tx, save_id, snapshot_id, &tactic, position_rule)?;
+    let players = free_players
+        .iter()
+        .map(|player| match development_slots.of(player.uid) {
+            Some(development) => ClubPlayer {
+                lane_scores: development_lane_scores(&tactic, player, development),
+                ..player.clone()
+            },
+            None => player.clone(),
+        })
+        .collect::<Vec<_>>();
     let strings = load_ordered_strings(&tx, save_id)?;
     let is_pinned = |string_id: i64, lane_id: &str| {
         manual_lanes
@@ -333,6 +376,7 @@ pub(super) fn optimize_depth(
     };
 
     let candidates = senior_candidates(&tactic, &players);
+    let mut starter_comparison = None;
     for (string_index, planner_string) in strings
         .iter()
         .filter(|planner_string| planner_string.team == PlannerTeam::Senior)
@@ -342,7 +386,21 @@ pub(super) fn optimize_depth(
             .filter(|&index| !is_pinned(planner_string.id, &tactic.lanes[index].lane_id))
             .collect::<Vec<_>>();
         let allocation = if string_index < ROTATION_STRING_INDEX {
-            allocate_lanes(&open_lanes, &candidates, &reserved_uids)
+            let allocation = allocate_lanes(&open_lanes, &candidates, &reserved_uids);
+            if develops && string_index == 0 {
+                let free_candidates = senior_candidates(&tactic, &free_players);
+                let strongest = allocate_lanes(&open_lanes, &free_candidates, &reserved_uids);
+                let (starters, score) = lineup_score(&allocation, &candidates, &players);
+                let (strongest_starters, strongest_score) =
+                    lineup_score(&strongest, &free_candidates, &free_players);
+                starter_comparison = Some(StarterComparison {
+                    starters,
+                    score,
+                    strongest_starters,
+                    strongest_score,
+                });
+            }
+            allocation
         } else {
             let pinned = tactic.lanes.len() - open_lanes.len();
             allocate_rotation(
@@ -372,8 +430,7 @@ pub(super) fn optimize_depth(
         .iter()
         .filter(|setting| setting.team != PlannerTeam::Senior)
         .collect::<Vec<_>>();
-    if !development_settings.is_empty() {
-        let rankings = load_slot_rankings(&tx, snapshot_id, &tactic, position_rule)?;
+    if let Some(rankings) = placement_rankings.filter(|_| !development_settings.is_empty()) {
         for setting in &development_settings {
             let team = setting.team;
             let mut slots = vec![Vec::new(); tactic.lanes.len()];
@@ -441,7 +498,52 @@ pub(super) fn optimize_depth(
     remove_empty_trailing_strings(&tx, save_id)?;
 
     tx.commit().map_err(|error| error.to_string())?;
-    load_depth(conn, save_id, Some(snapshot_id))
+    Ok(PlannerDepth {
+        starter_comparison,
+        ..load_depth(conn, save_id, Some(snapshot_id))?
+    })
+}
+
+/// A developing player's fit scores with every lane but his development slot, and the lanes
+/// that train the same, closed to him. A slot the user chose that he cannot play under the
+/// rule in use keeps the scores it was offered with, so Optimize can still place him there.
+fn development_lane_scores(
+    tactic: &PlannerTactic,
+    player: &ClubPlayer,
+    development: &PlayerDevelopment,
+) -> Vec<Option<(u8, u8)>> {
+    let Some(chosen) = development.chosen else {
+        return player.lane_scores.clone();
+    };
+    (0..tactic.lanes.len())
+        .map(|lane_index| {
+            if !same_training(&tactic.lanes[lane_index], &tactic.lanes[chosen]) {
+                return None;
+            }
+            player.lane_scores[lane_index].or_else(|| {
+                (lane_index == chosen)
+                    .then(|| development.chosen_scores())
+                    .flatten()
+            })
+        })
+        .collect()
+}
+
+/// How many lanes an allocation filled and the sum of its players' current fit scores.
+fn lineup_score(
+    allocation: &[(usize, usize)],
+    candidates: &[OptimizerCandidate],
+    players: &[ClubPlayer],
+) -> (usize, u32) {
+    let score = allocation
+        .iter()
+        .filter_map(|&(lane_index, candidate_index)| {
+            let player_uid = candidates[candidate_index].player_uid;
+            let player = players.iter().find(|player| player.uid == player_uid)?;
+            Some(u32::from(player.lane_scores[lane_index]?.0))
+        })
+        .sum();
+    (allocation.len(), score)
 }
 
 /// The senior squad's Rotation string comes after its Starter and Backup strings.
@@ -532,6 +634,7 @@ fn load_ordered_strings(
         .collect()
 }
 
+#[derive(Clone)]
 pub(super) struct ClubPlayer {
     pub(super) uid: i64,
     pub(super) name: String,

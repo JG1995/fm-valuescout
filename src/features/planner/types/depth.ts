@@ -38,9 +38,23 @@ export type PlannerDepthTeam = {
   strings: PlannerString[];
 };
 
+/**
+ * How the Starter lineup that Optimize filled for development compares with
+ * the strongest one: the players each holds and the sum of their current fit
+ * scores.
+ */
+export type PlannerStarterComparison = {
+  starters: number;
+  score: number;
+  strongestStarters: number;
+  strongestScore: number;
+};
+
 export type PlannerDepth = {
   tactic: PlannerTactic;
   teams: PlannerDepthTeam[];
+  /** Present only on the result of Optimize squads when it built for development. */
+  starterComparison?: PlannerStarterComparison | null;
 };
 
 /** A managed-club player whom no squad holds. */

@@ -40,6 +40,7 @@ import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import { managedClubQueryOptions } from "@/features/managed-club/api/managed-club-query-options";
 import type { ManagedClubStatus } from "@/features/managed-club/types/managed-club";
 import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
+import { plannerDevelopmentQueryOptions } from "@/features/planner/api/planner-development";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { plannerLoanCandidatesQueryOptions } from "@/features/planner/api/planner-loan-candidates-query-options";
 import { plannerTacticOptionsQueryOptions } from "@/features/planner/api/planner-tactic-options-query-options";
@@ -224,6 +225,12 @@ export const Route = createFileRoute("/my-club")({
     const reads: Promise<unknown>[] = [
       queryClient.ensureQueryData(clubDnaQueryOptions(context)),
     ];
+    if (managedClub.clubName) {
+      // Development slots rank the whole snapshot once, which the Training
+      // page and the board then reuse. The background warm-up of this route
+      // gets that done before the user asks.
+      warmQuery(queryClient, plannerDevelopmentQueryOptions(snapshot.saveId));
+    }
     if (deps.view === "squad") {
       // A sort change on the page stays on this route: the table requests the
       // new order itself and keeps the current rows until it arrives.
@@ -942,6 +949,14 @@ function MyClubPageContent() {
               key={`${snapshot.id}:${managedClub.clubName}`}
               activeSaveId={snapshot.saveId}
               disabled={squadBoostPending}
+              onDevelopmentChanged={() => {
+                // Squad's Suggested Training and the board's development marks
+                // follow what training follows and each development slot.
+                void queryClient.invalidateQueries({ queryKey: squadKeys.all });
+                void queryClient.invalidateQueries({
+                  queryKey: plannerKeys.developments(),
+                });
+              }}
             />
           )}
         </div>

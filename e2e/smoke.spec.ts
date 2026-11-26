@@ -5016,6 +5016,58 @@ test.describe("application smoke", () => {
     await expect(trigger).toBeFocused();
   });
 
+  test("training follows development slots once the save trains by them", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true, squadOverview: true });
+    await page.goto("/my-club?view=training");
+
+    const main = page.getByRole("main");
+    const winger = main.getByRole("row", { name: /Converted Winger/ });
+    await expect(winger).toContainText("Inside Winger MR");
+    await main
+      .getByRole("button", { name: "Development slot", exact: true })
+      .click();
+
+    // He plays the wing and trains for the slot his potential stands out in.
+    await expect(
+      main.getByText("Developing towards", { exact: true }),
+    ).toBeVisible();
+    await expect(winger).toContainText("Channel Forward ST");
+    await expect(winger).toContainText("Away from slot");
+    await expect(
+      main.getByRole("button", { name: "DCL, DCR: 0 players" }),
+    ).toBeVisible();
+    // A player in no squad trains his development slot too.
+    await expect(
+      main.getByRole("row", { name: /Unread Youngster/ }),
+    ).toContainText("Inside Full-Back DL");
+
+    // Positions count towards a development slot until the user says otherwise.
+    const familiarity = main.getByRole("checkbox", {
+      name: "Position familiarity",
+    });
+    await expect(familiarity).toBeChecked();
+    // The box follows the saved setting, so it is clicked, not unchecked.
+    await familiarity.click();
+    await expect(familiarity).not.toBeChecked();
+    await expect(
+      main.getByText(/A development slot is suggested in any position/),
+    ).toBeVisible();
+
+    // Choosing the slot he plays keeps the choice and ends the split.
+    const slot = winger.getByRole("combobox", {
+      name: "Development slot for Converted Winger",
+    });
+    await expect(slot.locator("option:checked")).toHaveText(
+      "STC · Channel Forward · suggested",
+    );
+    await slot.selectOption("right_winger");
+    await expect(winger).toContainText("Your choice");
+    await expect(winger).not.toContainText("Away from slot");
+    await expect(winger).toContainText("Inside Winger MR");
+  });
+
   test("planner team management renames, removes, and restores a populated team", async ({
     page,
   }) => {

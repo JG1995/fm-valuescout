@@ -1,16 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Maximize2 } from "lucide-react";
+import { Maximize2, Split } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
 import { clearPlannerDepth } from "../api/clear-planner-depth";
 import { optimizePlannerDepth } from "../api/optimize-planner-depth";
+import {
+  plannerDevelopmentQueryOptions,
+  setPlannerOptimizeFor,
+} from "../api/planner-development";
 import { plannerKeys } from "../api/planner-keys";
 import { plannerLoanCandidatesQueryOptions } from "../api/planner-loan-candidates-query-options";
 import { useOptimizeOptions } from "../stores/use-optimize-options";
 import type { PlannerDepth } from "../types/depth";
+import type { OptimizeFor, PlannerDevelopment } from "../types/development";
 import type { TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
+import { OptimizeForControl } from "./optimize-for-control";
 import { PlannerClearAllControl } from "./planner-clear-all-control";
 import { PlannerFmMoves } from "./planner-fm-moves";
 import { PlannerLoanCandidates } from "./planner-loan-candidates";
@@ -28,22 +34,71 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** What Optimize did; without position familiarity, how many players it leaves out of position. */
+/**
+ * What Optimize did: without position familiarity, how many players it leaves
+ * out of position, and for development, what its starters give up against the
+ * strongest lineup.
+ */
 function optimizedStatus(depth: PlannerDepth, positionFamiliarity: boolean) {
-  if (positionFamiliarity) {
-    return "Squads optimized.";
+  const comparison = depth.starterComparison ?? null;
+  const parts = [
+    comparison ? "Squads optimized for development" : "Squads optimized",
+  ];
+  if (!positionFamiliarity) {
+    const count = depth.teams
+      .flatMap((team) => team.strings)
+      .flatMap((plannerString) => plannerString.assignments)
+      .filter((assignment) => assignment.outOfPosition).length;
+    parts[0] += " without position familiarity";
+    parts.push(
+      `${
+        count === 0
+          ? "Nobody is"
+          : count === 1
+            ? "1 player is"
+            : `${count} players are`
+      } out of position`,
+    );
   }
-  const count = depth.teams
-    .flatMap((team) => team.strings)
-    .flatMap((plannerString) => plannerString.assignments)
-    .filter((assignment) => assignment.outOfPosition).length;
-  return `Squads optimized without position familiarity. ${
-    count === 0
-      ? "Nobody is"
-      : count === 1
-        ? "1 player is"
-        : `${count} players are`
-  } out of position.`;
+  if (comparison && comparison.starters > 0) {
+    const average = comparison.score / comparison.starters;
+    const strongest =
+      comparison.strongestStarters > 0
+        ? comparison.strongestScore / comparison.strongestStarters
+        : average;
+    const gap = strongest - average;
+    parts.push(
+      `The starters it placed average ${average.toFixed(1)}, ${
+        gap >= 0.05
+          ? `${gap.toFixed(1)} below the strongest lineup`
+          : "level with the strongest lineup"
+      }`,
+    );
+  }
+  return `${parts.join(". ")}.`;
+}
+
+/** The players who play a slot that trains differently from their development slot. */
+function awayFromDevelopmentSlot(
+  depth: PlannerDepth,
+  development: PlannerDevelopment | undefined,
+) {
+  const lanes = new Map(
+    (development?.players ?? []).map((player) => [
+      player.playerUid,
+      player.laneIds,
+    ]),
+  );
+  return new Set(
+    depth.teams
+      .flatMap((team) => team.strings)
+      .flatMap((plannerString) => plannerString.assignments)
+      .filter((assignment) => {
+        const laneIds = lanes.get(assignment.playerUid);
+        return laneIds !== undefined && !laneIds.includes(assignment.laneId);
+      })
+      .map((assignment) => assignment.playerUid),
+  );
 }
 
 /** Separates the squad controls that change the board, open a view, and set it up. */
@@ -91,6 +146,28 @@ export function PlannerDepthMatrix({
   const loanCandidates = useQuery(
     plannerLoanCandidatesQueryOptions(activeSaveId),
   );
+  const development = useQuery(plannerDevelopmentQueryOptions(activeSaveId));
+  const optimizeFor = development.data?.optimizeFor ?? "strongest";
+  const awayUids = useMemo(
+    () => awayFromDevelopmentSlot(depth, development.data),
+    [depth, development.data],
+  );
+  const chooseGoal = useMutation({
+    mutationFn: setPlannerOptimizeFor,
+    onSuccess: (_, goal: OptimizeFor) => {
+      queryClient.setQueryData(
+        plannerKeys.development(activeSaveId),
+        (current: PlannerDevelopment | undefined) =>
+          current ? { ...current, optimizeFor: goal } : current,
+      );
+      setOptimizeError(null);
+    },
+    onError: (error) => {
+      setOptimizeError(
+        `Could not save the Optimize goal: ${errorMessage(error)}`,
+      );
+    },
+  });
   const loanCandidateUids = useMemo(
     () =>
       new Set(
@@ -184,7 +261,12 @@ export function PlannerDepthMatrix({
   };
 
   const runOptimization = () => {
-    if (clearAll.isPending || optimize.isPending || teamManagementPending) {
+    if (
+      clearAll.isPending ||
+      optimize.isPending ||
+      chooseGoal.isPending ||
+      teamManagementPending
+    ) {
       return;
     }
     setOptimizeError(null);
@@ -246,6 +328,7 @@ export function PlannerDepthMatrix({
               disabled={
                 clearAll.isPending ||
                 optimize.isPending ||
+                chooseGoal.isPending ||
                 teamManagementPending
               }
               loading={optimize.isPending}
@@ -323,13 +406,48 @@ export function PlannerDepthMatrix({
             />
           </div>
         </fieldset>
-        <PositionFamiliarityToggle
-          checked={positionFamiliarity}
-          disabled={
-            clearAll.isPending || optimize.isPending || teamManagementPending
-          }
-          onChange={setPositionFamiliarity}
-        />
+        <div className="flex flex-col gap-1.5">
+          {/* On its own line, as the familiarity option is: the action row
+              must stay on one line at 1280px. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <OptimizeForControl
+              optimizeFor={optimizeFor}
+              disabled={
+                !development.data ||
+                chooseGoal.isPending ||
+                clearAll.isPending ||
+                optimize.isPending ||
+                teamManagementPending
+              }
+              onChange={(goal) => chooseGoal.mutate(goal)}
+            />
+            <span className="text-body-sm text-on-surface-variant">
+              {optimizeFor === "development" && development.data
+                ? `Optimize squads gives a player aged ${development.data.maxAge} or under only his development slot. He starts there if he earns it, and otherwise sits behind it.`
+                : "Optimize squads puts every player where the squads are strongest today."}
+            </span>
+          </div>
+          <PositionFamiliarityToggle
+            checked={positionFamiliarity}
+            disabled={
+              clearAll.isPending || optimize.isPending || teamManagementPending
+            }
+            onChange={setPositionFamiliarity}
+          />
+          {awayUids.size > 0 ? (
+            <p className="flex items-start gap-2 text-body-sm text-on-surface">
+              <Split
+                aria-hidden="true"
+                className="mt-0.5 size-4 shrink-0 text-info"
+              />
+              {awayUids.size === 1
+                ? "1 developing player plays away from his development slot."
+                : `${awayUids.size} developing players play away from their development slots.`}{" "}
+              Training can still follow it: choose Development slot on the
+              Training page.
+            </p>
+          ) : null}
+        </div>
         {actionStatus ? (
           <p className="text-body-sm text-success" role="status">
             {actionStatus}
@@ -350,6 +468,7 @@ export function PlannerDepthMatrix({
           tactic={tactic}
           options={options}
           loanCandidateUids={loanCandidateUids}
+          awayFromDevelopmentUids={awayUids}
           onOpen={openPicker}
         />
       </div>

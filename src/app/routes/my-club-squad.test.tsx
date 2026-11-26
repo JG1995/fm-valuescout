@@ -74,6 +74,7 @@ import {
   resolvePendingManagedClubSave,
   resolvePendingPlannerTeamRemovalImpact,
   resolvePlannerDepthIpcMock,
+  resolvePlannerDevelopmentIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
   resolveSavePlannerClubFamilyIpcMock,
@@ -85,6 +86,7 @@ import {
   setPlannerClearAllError,
   setPlannerClearAllPending,
   setPlannerDepthIpcMock,
+  setPlannerDevelopmentIpcMock,
   setPlannerLoanCandidatesIpcMock,
   setPlannerOptimizeDepth,
   setPlannerOptimizeError,
@@ -6446,6 +6448,78 @@ describe("My Club route", () => {
     expect(
       await screen.findByRole("button", { name: "Unassigned (0)" }),
     ).toBeDisabled();
+  });
+
+  it("marks a developing player who plays away from his development slot", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
+    setPlannerDepthIpcMock(withReserveGoalkeeper(resolvePlannerDepthIpcMock()));
+    // The keeper is growing into a winger.
+    setPlannerDevelopmentIpcMock({
+      optimizeFor: "strongest",
+      maxAge: 23,
+      players: [{ playerUid: 77, laneIds: ["right_winger"] }],
+    });
+    renderMyClubRoute();
+
+    const board = await screen.findByRole("region", {
+      name: "Squad depth board",
+    });
+    const cell = await within(board).findByRole("button", {
+      name: /Reserve Keeper, Resolved, .* away from his development slot$/,
+    });
+    expect(
+      within(cell).getByTitle(
+        "Away from his development slot: he is growing into another slot",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /1 developing player plays away from his development slot\./,
+      ),
+    ).toBeVisible();
+  });
+
+  it("optimizes for development and says what the starters give up", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs([{ clubName: "Barcelona", clubUid: 1 }]);
+    setPlannerOptimizeDepth({
+      ...withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
+      starterComparison: {
+        starters: 2,
+        score: 125,
+        strongestStarters: 2,
+        strongestScore: 145,
+      },
+    });
+    renderMyClubRoute();
+
+    const goals = await screen.findByRole("group", { name: "Optimize for" });
+    const development = within(goals).getByRole("button", {
+      name: "Development",
+    });
+    await waitFor(() => expect(development).toBeEnabled());
+    expect(
+      within(goals).getByRole("button", { name: "Strongest" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await user.click(development);
+
+    await waitFor(() =>
+      expect(development).toHaveAttribute("aria-pressed", "true"),
+    );
+    expect(
+      screen.getByText(
+        /gives a player aged 23 or under only his development slot/,
+      ),
+    ).toBeVisible();
+    expect(resolvePlannerDevelopmentIpcMock().optimizeFor).toBe("development");
+
+    await user.click(screen.getByRole("button", { name: "Optimize squads" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Squads optimized for development. The starters it placed average 62.5, 10.0 below the strongest lineup.",
+    );
   });
 
   it("counts the recommended loans, lists every candidate, and marks them on the board", async () => {

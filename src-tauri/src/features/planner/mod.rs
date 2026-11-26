@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod depth;
+mod development;
 pub(crate) mod fit;
 mod fm_moves;
 mod fm_training;
@@ -15,6 +16,8 @@ pub(crate) mod teams;
 
 #[cfg(test)]
 mod depth_tests;
+#[cfg(test)]
+mod development_tests;
 #[cfg(test)]
 mod fit_tests;
 #[cfg(test)]

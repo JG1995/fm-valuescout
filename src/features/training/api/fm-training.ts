@@ -1,6 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
 import { invokeCommand } from "@/lib/tauri-client";
-import type { FmTraining, FmTrainingResult } from "../types/fm-training";
+import type {
+  FmTraining,
+  FmTrainingResult,
+  TrainingBasis,
+} from "../types/fm-training";
 
 export const trainingKeys = {
   // The plan follows the Planner's assignments and tactic, so the Planner's
@@ -27,4 +31,34 @@ export function applyFmTraining(playerUids: number[]) {
   return invokeCommand<FmTrainingResult>("apply_squad_fm_training", {
     playerUids,
   });
+}
+
+/** Sets whether the save's training follows Planner slots or development slots. */
+export function setTrainingBasis(basis: TrainingBasis) {
+  return invokeCommand<null>("set_training_basis", { basis });
+}
+
+/** Sets the oldest age at which the save's players still count as developing. */
+export function setDevelopmentMaxAge(maxAge: number) {
+  return invokeCommand<null>("set_development_max_age", { maxAge });
+}
+
+/**
+ * Sets whether development slots are suggested only among the positions a
+ * player can play, or in any position.
+ */
+export function setDevelopmentPositionFamiliarity(
+  positionFamiliarity: boolean,
+) {
+  return invokeCommand<null>("set_development_position_familiarity", {
+    positionFamiliarity,
+  });
+}
+
+/**
+ * Gives a player a development slot in place of the suggested one; a null
+ * lane returns him to the suggestion.
+ */
+export function setDevelopmentSlot(playerUid: number, laneId: string | null) {
+  return invokeCommand<null>("set_development_slot", { playerUid, laneId });
 }
