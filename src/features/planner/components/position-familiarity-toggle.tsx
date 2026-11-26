@@ -1,5 +1,5 @@
+import { Switch } from "@/components/ui/switch/switch";
 import { Tooltip } from "@/components/ui/tooltip/tooltip";
-import { cn } from "@/utils/cn";
 
 /** Whether Optimize squads places players only in positions they can play. */
 export function PositionFamiliarityToggle({
@@ -20,21 +20,13 @@ export function PositionFamiliarityToggle({
       }
     >
       {(tooltipId) => (
-        <label
-          className={cn(
-            "flex items-center gap-2 text-body-md",
-            disabled ? "text-on-surface-variant" : "text-on-surface",
-          )}
-        >
-          <input
-            type="checkbox"
-            checked={checked}
-            disabled={disabled}
-            aria-describedby={tooltipId}
-            onChange={(event) => onChange(event.target.checked)}
-          />
-          Position familiarity
-        </label>
+        <Switch
+          label="Position familiarity"
+          checked={checked}
+          disabled={disabled}
+          aria-describedby={tooltipId}
+          onChange={onChange}
+        />
       )}
     </Tooltip>
   );

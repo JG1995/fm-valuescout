@@ -1,5 +1,6 @@
 import { Lock } from "lucide-react";
 import { fieldClasses } from "@/components/ui/field/field-styles";
+import { Switch } from "@/components/ui/switch/switch";
 import { Tooltip } from "@/components/ui/tooltip/tooltip";
 import { cn } from "@/utils/cn";
 import type {
@@ -163,23 +164,13 @@ export function TrainForControl({
         }
       >
         {(tooltipId) => (
-          <label
-            className={cn(
-              "flex items-center gap-2 text-body-md",
-              disabled ? "text-on-surface-variant" : "text-on-surface",
-            )}
-          >
-            <input
-              type="checkbox"
-              checked={positionFamiliarity}
-              disabled={disabled}
-              aria-describedby={tooltipId}
-              onChange={(event) =>
-                onPositionFamiliarityChange(event.target.checked)
-              }
-            />
-            Position familiarity
-          </label>
+          <Switch
+            label="Position familiarity"
+            checked={positionFamiliarity}
+            disabled={disabled}
+            aria-describedby={tooltipId}
+            onChange={onPositionFamiliarityChange}
+          />
         )}
       </Tooltip>
     </>

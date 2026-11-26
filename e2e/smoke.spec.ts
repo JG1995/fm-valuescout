@@ -5037,7 +5037,7 @@ test.describe("application smoke", () => {
     ).toContainText("Inside Full-Back DL");
 
     // Positions count towards a development slot until the user says otherwise.
-    const familiarity = main.getByRole("checkbox", {
+    const familiarity = main.getByRole("switch", {
       name: "Position familiarity",
     });
     await expect(familiarity).toBeChecked();

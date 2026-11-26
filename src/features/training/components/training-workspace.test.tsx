@@ -609,7 +609,7 @@ describe("Training workspace", () => {
       ),
     };
     const { changes } = renderTraining(developmentPlan, null, anywhere);
-    const toggle = await screen.findByRole("checkbox", {
+    const toggle = await screen.findByRole("switch", {
       name: "Position familiarity",
     });
     expect(toggle).toBeChecked();
