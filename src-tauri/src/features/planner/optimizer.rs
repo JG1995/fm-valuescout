@@ -17,9 +17,7 @@ use super::depth::{
     remove_empty_trailing_strings, AssignmentProvenance, PlannerDepth, PlannerTeam,
     StarterComparison, ROTATION_PLACES,
 };
-use super::development::{
-    self, load_development_slots, same_training, OptimizeFor, PlayerDevelopment,
-};
+use super::development::{self, load_development_slots, OptimizeFor};
 use super::fit::{is_goalkeeper_lane, PositionRule};
 use super::outlook::{expected_score, slot_value, Development};
 use super::standout::slot_rankings;
@@ -362,7 +360,7 @@ pub(super) fn optimize_depth(
         .iter()
         .map(|player| match development_slots.of(player.uid) {
             Some(development) => ClubPlayer {
-                lane_scores: development_lane_scores(&tactic, player, development),
+                lane_scores: development.lane_scores_in_slot(&tactic, &player.lane_scores),
                 ..player.clone()
             },
             None => player.clone(),
@@ -502,31 +500,6 @@ pub(super) fn optimize_depth(
         starter_comparison,
         ..load_depth(conn, save_id, Some(snapshot_id))?
     })
-}
-
-/// A developing player's fit scores with every lane but his development slot, and the lanes
-/// that train the same, closed to him. A slot the user chose that he cannot play under the
-/// rule in use keeps the scores it was offered with, so Optimize can still place him there.
-fn development_lane_scores(
-    tactic: &PlannerTactic,
-    player: &ClubPlayer,
-    development: &PlayerDevelopment,
-) -> Vec<Option<(u8, u8)>> {
-    let Some(chosen) = development.chosen else {
-        return player.lane_scores.clone();
-    };
-    (0..tactic.lanes.len())
-        .map(|lane_index| {
-            if !same_training(&tactic.lanes[lane_index], &tactic.lanes[chosen]) {
-                return None;
-            }
-            player.lane_scores[lane_index].or_else(|| {
-                (lane_index == chosen)
-                    .then(|| development.chosen_scores())
-                    .flatten()
-            })
-        })
-        .collect()
 }
 
 /// How many lanes an allocation filled and the sum of its players' current fit scores.

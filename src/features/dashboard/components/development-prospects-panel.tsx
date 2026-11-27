@@ -30,7 +30,7 @@ import {
   PLAYER_CARD_MIN,
   PlayerCard,
 } from "./player-card";
-import { YOUTH_MAX_AGE, YouthXiModal } from "./youth-xi-modal";
+import { YouthXiModal } from "./youth-xi-modal";
 
 // Two rows of five: the most prospects one read returns.
 const MAX_PROSPECT_COLUMNS = 5;
@@ -83,8 +83,8 @@ function ProspectCard({
 }
 
 /**
- * The club's young players with the highest potential in the tactic as cards,
- * and the XI its young players form behind them.
+ * The club's developing players with the highest potential in their
+ * development slots as cards, and the XI its young players form behind them.
  */
 export function DevelopmentProspectsPanel({
   context,
@@ -142,14 +142,15 @@ export function DevelopmentProspectsPanel({
               icon={TrendingUp}
               title="No prospects with room to grow"
             >
-              None aged {YOUTH_MAX_AGE} or younger is projected to improve in
-              your tactic.
+              {prospects
+                ? `None aged ${prospects.maxAge} or younger is projected to improve in their development slot.`
+                : null}
             </EmptyState>
           </div>
         ) : (
           <>
             <p className={cardPanelSummaryClass}>
-              Aged {YOUTH_MAX_AGE} or younger
+              Aged {prospects.maxAge} or younger
             </p>
             <div className="flex flex-1 border-t border-outline-variant">
               <CardGrid

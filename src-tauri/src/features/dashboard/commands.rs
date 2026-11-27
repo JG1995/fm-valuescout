@@ -411,6 +411,8 @@ impl From<YouthXiSlot> for YouthXiSlotDto {
 pub struct DashboardProspectsDto {
     pub players: Vec<ProspectDto>,
     pub youth_xi: Vec<YouthXiSlotDto>,
+    /// The oldest age at which the save counts a player as developing.
+    pub max_age: i64,
 }
 
 impl From<Prospects> for DashboardProspectsDto {
@@ -418,12 +420,13 @@ impl From<Prospects> for DashboardProspectsDto {
         Self {
             players: value.players.into_iter().map(Into::into).collect(),
             youth_xi: value.youth_xi.into_iter().map(Into::into).collect(),
+            max_age: value.max_age,
         }
     }
 }
 
-/// The managed club's young players with the highest potential in the tactic and the XI they
-/// form, or `null` without a current snapshot or a managed club.
+/// The managed club's developing players with the highest potential in their development slots
+/// and the XI its young players form, or `null` without a current snapshot or a managed club.
 #[tauri::command]
 pub async fn get_dashboard_prospects(
     db: State<'_, Db>,

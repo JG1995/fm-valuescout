@@ -14,7 +14,11 @@ const NO_CONTRACTS: DashboardExpiringContracts = {
   total: 0,
   players: [],
 };
-const NO_PROSPECTS: DashboardProspects = { players: [], youthXi: [] };
+const NO_PROSPECTS: DashboardProspects = {
+  players: [],
+  youthXi: [],
+  maxAge: 23,
+};
 
 let signingsResolver: SigningsResolver = () => null;
 let signingsRequests: DashboardSigningsRequest[] = [];

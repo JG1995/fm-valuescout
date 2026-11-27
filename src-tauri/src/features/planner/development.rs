@@ -86,7 +86,7 @@ pub(crate) struct DevelopmentSettings {
     pub(crate) position_rule: PositionRule,
 }
 
-pub(super) fn load_settings(
+pub(crate) fn load_settings(
     conn: &Connection,
     save_id: i64,
 ) -> Result<DevelopmentSettings, String> {
@@ -246,37 +246,62 @@ pub(super) struct DevelopmentOption {
 
 /// Where a player aged up to the save's limit is growing.
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct PlayerDevelopment {
+pub(crate) struct PlayerDevelopment {
     /// One option for each set of lanes that train the same: the slots he is ranked in, highest
     /// potential rank first, then the others in the tactic's order.
     pub(super) options: Vec<DevelopmentOption>,
     /// The option the app suggests; `None` when he is ranked in no slot.
     pub(super) suggested: Option<usize>,
     /// His development slot: the option he was given, otherwise the suggested one.
-    pub(super) chosen: Option<usize>,
+    pub(crate) chosen: Option<usize>,
     /// Whether the user chose `chosen`.
     pub(super) locked: bool,
 }
 
 impl PlayerDevelopment {
     /// His scores now and at potential in his development slot.
-    pub(super) fn chosen_scores(&self) -> Option<(u8, u8)> {
+    pub(crate) fn chosen_scores(&self) -> Option<(u8, u8)> {
         let chosen = self.chosen?;
         self.options
             .iter()
             .find(|option| option.lane_index == chosen)
             .map(|option| (option.current, option.potential))
     }
+
+    /// `lane_scores` left only in his development slot and the lanes that train the same, as
+    /// Optimize for development places him. A chosen slot he cannot play keeps the scores it
+    /// was offered with. A player who suits no slot keeps every lane.
+    pub(crate) fn lane_scores_in_slot(
+        &self,
+        tactic: &PlannerTactic,
+        lane_scores: &[Option<(u8, u8)>],
+    ) -> Vec<Option<(u8, u8)>> {
+        let Some(chosen) = self.chosen else {
+            return lane_scores.to_vec();
+        };
+        (0..tactic.lanes.len())
+            .map(|lane_index| {
+                if !same_training(&tactic.lanes[lane_index], &tactic.lanes[chosen]) {
+                    return None;
+                }
+                lane_scores[lane_index].or_else(|| {
+                    (lane_index == chosen)
+                        .then(|| self.chosen_scores())
+                        .flatten()
+                })
+            })
+            .collect()
+    }
 }
 
 /// The development slot of every managed-club player young enough to have one, by player UID.
 #[derive(Debug, Clone, Default)]
-pub(super) struct DevelopmentSlots {
+pub(crate) struct DevelopmentSlots {
     players: HashMap<i64, PlayerDevelopment>,
 }
 
 impl DevelopmentSlots {
-    pub(super) fn of(&self, player_uid: i64) -> Option<&PlayerDevelopment> {
+    pub(crate) fn of(&self, player_uid: i64) -> Option<&PlayerDevelopment> {
         self.players.get(&player_uid)
     }
 
@@ -449,7 +474,7 @@ pub(super) fn load_development_slots(
 }
 
 /// [`load_development_slots`] with the rankings readers keep.
-pub(super) fn development_slots(
+pub(crate) fn development_slots(
     conn: &Connection,
     save_id: i64,
     snapshot_id: i64,

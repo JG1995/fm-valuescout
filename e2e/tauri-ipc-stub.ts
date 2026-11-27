@@ -1085,6 +1085,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             player: player ? dashboardYoungPlayer(player) : null,
           };
         }),
+        maxAge: 23,
       };
 
       window.__TAURI_INTERNALS__ = {

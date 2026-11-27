@@ -6612,6 +6612,7 @@ describe("My Club route", () => {
               }
             : null,
       })),
+      maxAge: 23,
     });
     renderMyClubRoute();
 
