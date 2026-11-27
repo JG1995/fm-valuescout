@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-11-27
+
+### Changed
+
+- **Development prospects follow development slots.** On the Dashboard, **Development prospects** now shows each player in his development slot, the one **Develops as** names on Training, with his score there now and at his potential. The cards cover your players up to the save's development age limit, 23 by default, where they stopped at 21. The **Youth XI** still takes players aged 21 or younger, but keeps each developing player to his development slot or one that trains the same, as **Optimize for Development** does.
+
+### Fixed
+
+- **A position familiarity of 15 now counts in full.** FM27 treats a player as able to play a position from a familiarity of 15, and the app now does too, where it asked for 16. A player rated 15 joins that position's Moneyball peers, loses no points for it in the Planner or in Search's role scores, is no longer marked **Learning** on Training, matches Search's position rule, and is listed for that position in the Youth Academy. Moneyball percentiles, the Dashboard's signing filters, and the Planner's Moneyball scores shift slightly as a result. Planner squads pick up the change on the next **Optimize squads**.
+
 ## [0.39.0] - 2026-11-26
 
 ### Added
