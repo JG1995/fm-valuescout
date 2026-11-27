@@ -1,6 +1,6 @@
 pub mod commands;
 pub mod depth;
-mod development;
+pub(crate) mod development;
 pub(crate) mod fit;
 mod fm_moves;
 mod fm_training;

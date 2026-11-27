@@ -156,19 +156,24 @@ type DashboardYoungPlayer = {
   potentialScore: number;
 };
 
-/** A young player in the tactic slot where their potential score is highest. */
+/** A developing player in their development slot. */
 export type DashboardProspect = DashboardYoungPlayer & DashboardSlotPlacement;
 
 export type DashboardYouthXiSlot = DashboardSlotPlacement & {
-  /** Null when no young player can play the slot. */
+  /** Null when no young player can take the slot. */
   player: DashboardYoungPlayer | null;
 };
 
 export type DashboardProspects = {
-  /** Young players with room to grow, highest potential first. */
+  /** Developing players with room to grow, highest potential first. */
   players: DashboardProspect[];
-  /** Every tactic slot with the young player it takes by potential score. */
+  /**
+   * Every tactic slot with the young player it takes by potential score, each
+   * developing player kept to their development slot.
+   */
   youthXi: DashboardYouthXiSlot[];
+  /** The oldest age at which the save counts a player as developing. */
+  maxAge: number;
 };
 
 /**

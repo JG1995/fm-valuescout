@@ -677,6 +677,7 @@ describe("Dashboard", () => {
         },
       ],
       youthXi: [],
+      maxAge: 23,
     });
     renderDashboard();
 
@@ -702,6 +703,8 @@ describe("Dashboard", () => {
     ).getByRole("listitem");
     expect(prospect).toHaveTextContent("19 years");
     expect(prospect).toHaveTextContent("+30");
+    // The save's development age limit bounds the prospects.
+    expect(screen.getByText("Aged 23 or younger")).toBeVisible();
     expect(
       within(prospect).getByRole("img", {
         name: "Young Left Back potential at DL: 80, Good",
@@ -829,6 +832,7 @@ describe("Dashboard", () => {
           player: null,
         },
       ],
+      maxAge: 23,
     });
     renderDashboard();
 

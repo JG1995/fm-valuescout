@@ -135,8 +135,36 @@ fn contracts_and_prospects_leave_out_a_namesake_clubs_players() {
     assert_eq!(listed(&fixture), (vec![1, 2], vec![1, 2]));
 }
 
+fn choose_development_slot(fixture: &Fixture, uid: i64, lane_id: &str) {
+    fixture
+        .conn
+        .execute(
+            "INSERT INTO planner_development_slots (save_id, player_uid, lane_id)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params![fixture.save_id, uid, lane_id],
+        )
+        .expect("choose development slot");
+}
+
+fn listed_prospects(fixture: &Fixture) -> Vec<(i64, String, u8, u8)> {
+    get_prospects(&fixture.conn, fixture.save_id)
+        .expect("read prospects")
+        .expect("prospects for a managed club")
+        .players
+        .into_iter()
+        .map(|prospect| {
+            (
+                prospect.uid,
+                prospect.lane.lane_id,
+                prospect.current_score,
+                prospect.potential_score,
+            )
+        })
+        .collect()
+}
+
 #[test]
-fn ranks_young_players_by_potential_in_their_best_tactic_slot() {
+fn ranks_developing_players_by_potential_in_their_development_slot() {
     let fixture = open_with_players(&[
         player(1, "Young Left Back", HOME_CLUB, "DL"),
         player(2, "Young Keeper", HOME_CLUB, "GK"),
@@ -144,10 +172,11 @@ fn ranks_young_players_by_potential_in_their_best_tactic_slot() {
         player(4, "Finished Centre Back", HOME_CLUB, "DC"),
         player(5, "Rival Youngster", OTHER_CLUB, "DL"),
     ]);
+    // The save counts players aged 23 or younger as developing.
     for (uid, age, lane_id, current, potential) in [
         (1, 19, "left_back", 50, 80),
-        (2, 21, "goalkeeper", 60, 70),
-        (3, 22, "goalkeeper", 40, 90),
+        (2, 23, "goalkeeper", 60, 70),
+        (3, 24, "goalkeeper", 40, 90),
         (4, 18, "left_centre_back", 70, 70),
         (5, 17, "left_back", 30, 95),
     ] {
@@ -155,6 +184,57 @@ fn ranks_young_players_by_potential_in_their_best_tactic_slot() {
         fixture.set_slot_score(uid, lane_id, current);
         fixture.set_potential_slot_score(uid, lane_id, potential);
     }
+    let prospects = get_prospects(&fixture.conn, fixture.save_id)
+        .expect("read prospects")
+        .expect("prospects for a managed club");
+    assert_eq!(prospects.max_age, 23);
+    assert_eq!(
+        listed_prospects(&fixture),
+        [
+            (1, "left_back".to_string(), 50, 80),
+            (2, "goalkeeper".to_string(), 60, 70)
+        ]
+    );
+
+    fixture
+        .conn
+        .execute(
+            "UPDATE saves SET development_max_age = 22 WHERE id = ?1",
+            [fixture.save_id],
+        )
+        .expect("lower the development age limit");
+    assert_eq!(
+        listed_prospects(&fixture),
+        [(1, "left_back".to_string(), 50, 80)]
+    );
+}
+
+#[test]
+fn a_prospect_shows_the_development_slot_chosen_for_him() {
+    let fixture = open_with_players(&[player(1, "Young Left Back", HOME_CLUB, "DL")]);
+    fixture.set_player_column(1, "age", 19);
+    fixture.set_slot_score(1, "left_back", 50);
+    fixture.set_potential_slot_score(1, "left_back", 80);
+    // He cannot play defensive midfield yet, so the slot scores his roles alone.
+    fixture.set_slot_score(1, "defensive_midfielder", 40);
+    fixture.set_potential_slot_score(1, "defensive_midfielder", 70);
+    choose_development_slot(&fixture, 1, "defensive_midfielder");
+
+    assert_eq!(
+        listed_prospects(&fixture),
+        [(1, "defensive_midfielder".to_string(), 40, 70)]
+    );
+}
+
+#[test]
+fn the_youth_xi_keeps_a_developing_player_in_his_development_slot() {
+    let fixture = open_with_players(&[player(1, "Young Left Back", HOME_CLUB, "DL")]);
+    fixture.set_player_column(1, "age", 19);
+    fixture.set_slot_score(1, "left_back", 50);
+    fixture.set_potential_slot_score(1, "left_back", 80);
+    fixture.set_slot_score(1, "defensive_midfielder", 40);
+    fixture.set_potential_slot_score(1, "defensive_midfielder", 70);
+    choose_development_slot(&fixture, 1, "defensive_midfielder");
 
     let prospects = get_prospects(&fixture.conn, fixture.save_id)
         .expect("read prospects")
@@ -162,16 +242,19 @@ fn ranks_young_players_by_potential_in_their_best_tactic_slot() {
 
     assert_eq!(
         prospects
-            .players
+            .youth_xi
             .iter()
-            .map(|prospect| (
-                prospect.uid,
-                prospect.lane.lane_id.as_str(),
-                prospect.current_score,
-                prospect.potential_score
-            ))
+            .filter_map(|slot| {
+                let player = slot.player.as_ref()?;
+                Some((
+                    player.uid,
+                    slot.lane.lane_id.as_str(),
+                    player.current_score,
+                    player.potential_score,
+                ))
+            })
             .collect::<Vec<_>>(),
-        [(1, "left_back", 50, 80), (2, "goalkeeper", 60, 70)]
+        [(1, "defensive_midfielder", 40, 70)]
     );
 }
 

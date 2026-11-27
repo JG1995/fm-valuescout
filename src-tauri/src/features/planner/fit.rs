@@ -53,7 +53,7 @@ pub(crate) fn lane_fit_score(
 
 /// Whether Optimize holds a player's position familiarity against him.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum PositionRule {
+pub(crate) enum PositionRule {
     /// He can fill only the lanes whose positions he can play, and loses points for a
     /// position he is less familiar with.
     Familiarity,
