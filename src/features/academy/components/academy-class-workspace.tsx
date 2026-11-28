@@ -280,7 +280,7 @@ function AcademyRosterGroup({
         <div className="mt-2 max-h-[min(55vh,560px)] overflow-auto rounded-lg border border-outline-variant">
           <table
             aria-labelledby={headingId}
-            className="min-w-[1360px] w-full border-collapse text-left"
+            className="min-w-[1300px] w-full border-collapse text-left"
           >
             <caption className="sr-only">
               {title} players in Class of {academyClass.classYear}
@@ -323,7 +323,6 @@ function AcademyRosterTableHeader() {
           "Career apps",
           "Goals",
           "Assists",
-          "Caps",
           "Fee",
           "Actions",
         ].map((label) => (
@@ -340,7 +339,6 @@ function AcademyRosterTableHeader() {
                 "Career apps",
                 "Goals",
                 "Assists",
-                "Caps",
                 "Fee",
                 "Actions",
               ].includes(label)
@@ -454,9 +452,6 @@ function AcademyRosterRow({
       </td>
       <td className="px-2 text-right text-body-sm tabular-nums">
         {formatMissable(member.assists)}
-      </td>
-      <td className="px-2 text-right text-body-sm tabular-nums">
-        {formatMissable(member.internationalCaps)}
       </td>
       <td className="px-2 text-right text-body-sm tabular-nums">
         {member.outcome?.status === "sold" && member.outcome.saleFeeEur !== null

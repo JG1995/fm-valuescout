@@ -9,7 +9,6 @@ export type AcademyStatistics = {
   graduates: number | null;
   goals: number | null;
   assists: number | null;
-  internationalCaps: number | null;
   saleFeeEur: number | null;
   releasedPlayers: number | null;
 };
@@ -20,7 +19,6 @@ export function unavailableAcademyStatistics(): AcademyStatistics {
     graduates: null,
     goals: null,
     assists: null,
-    internationalCaps: null,
     saleFeeEur: null,
     releasedPlayers: null,
   };
@@ -46,10 +44,6 @@ export function summarizeAcademyMembers(
     ),
     goals: completeSum(members, (member) => member.goals),
     assists: completeSum(members, (member) => member.assists),
-    internationalCaps: completeSum(
-      members,
-      (member) => member.internationalCaps,
-    ),
     saleFeeEur: members.reduce(
       (total, member) =>
         member.outcome?.status === "sold"

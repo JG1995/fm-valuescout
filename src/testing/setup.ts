@@ -48,11 +48,6 @@ import {
   resolveClubDnaSetIpcMock,
 } from "@/testing/club-dna-ipc-mock";
 import {
-  resetCsvImportIpcMock,
-  resolveBusyCsvImportRequest,
-  resolveCsvImportIpcMock,
-} from "@/testing/csv-import-ipc-mock";
-import {
   resetDashboardIpcMock,
   resolveDashboardExpiringContractsIpcMock,
   resolveDashboardProspectsIpcMock,
@@ -216,10 +211,6 @@ function registerIpcMocks() {
 
     if (cmd === "get_current_snapshot") {
       return resolveGetCurrentSnapshotIpcMock();
-    }
-
-    if (cmd === "import_csv") {
-      return resolveCsvImportIpcMock(args);
     }
 
     if (cmd === "get_club_dna") {
@@ -479,7 +470,6 @@ afterEach(() => {
   resolveBusyLoadDataRequest();
   resolveBusySnapshotDeleteRequest();
   resolveBusySnapshotDateEditRequest();
-  resolveBusyCsvImportRequest();
   resolveBusyClubDnaGetRequest();
   resolveBusyClubDnaSetRequest();
   resolveBusyClubDnaRemoveRequest();
@@ -492,7 +482,6 @@ afterEach(() => {
   resetBridgeInstallIpcMock();
   resetGraphicsIpcMock();
   resetSnapshotIpcMock();
-  resetCsvImportIpcMock();
   resetDashboardIpcMock();
   resetClubDnaIpcMock();
   resetSearchPlayersOverride();

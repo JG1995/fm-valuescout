@@ -428,7 +428,7 @@ test.describe("application smoke", () => {
       await expect(
         outcomes.getByText("Graduates", { exact: true }),
       ).toHaveAccessibleDescription(
-        "Career appearances have not been imported for every tracked player.",
+        "Needs season stats from your linked FM save.",
       );
       await expect(outcomes.locator("svg").first()).toHaveCSS("width", "16px");
       const outcomeBox = await outcomes.boundingBox();
@@ -1873,21 +1873,10 @@ test.describe("application smoke", () => {
         name: "Squad actions",
         exact: true,
       });
-      const upload = actions.getByRole("button", {
-        name: "Upload Youth Academy CSV",
-        exact: true,
-      });
       const boost = actions.getByRole("button", {
         name: "Boost all CA",
         exact: true,
       });
-      const [uploadBox, boostBox] = await Promise.all([
-        upload.boundingBox(),
-        boost.boundingBox(),
-      ]);
-      if (!uploadBox || !boostBox)
-        throw new Error("Expected visible Squad action groups.");
-      expect(boostBox.x).toBeGreaterThan(uploadBox.x);
       await expect(boost).not.toHaveClass(/bg-primary/);
 
       const [mainBox, scrollerBox, mainDimensions, dimensions] =
@@ -2623,46 +2612,6 @@ test.describe("application smoke", () => {
     await expect(menu).toBeVisible();
     await heading.click({ button: "right" });
     await expect(menu).toHaveCount(0);
-  });
-
-  test("Search and Squad offer no Moneyball upload while Squad keeps Youth Academy", async ({
-    page,
-  }) => {
-    await stubTauriIpc(page, {
-      plannerSnapshot: true,
-      squadOverview: true,
-      csvImportFormat: "youthTracker",
-    });
-    await page.goto("/search");
-
-    const main = page.getByRole("main");
-    await expect(
-      main.getByRole("button", { name: "Refresh stats" }),
-    ).toBeVisible();
-    await expect(
-      main.getByRole("button", { name: "Upload Moneyball CSV" }),
-    ).toHaveCount(0);
-
-    await page.goto("/my-club");
-    await main
-      .getByRole("button", { name: "Upload Youth Academy CSV" })
-      .click();
-    await expect(
-      main.getByRole("button", { name: "Upload Squad CSV" }),
-    ).toHaveCount(0);
-    const youthDialog = page.getByRole("dialog", {
-      name: "Upload Youth Academy CSV",
-    });
-    await expect(youthDialog).toContainText(
-      "Choose a Youth Academy CSV export.",
-    );
-    await youthDialog.getByRole("button", { name: "Browse files" }).click();
-    await expect(
-      youthDialog.getByText(/Youth Academy imported/i),
-    ).toBeVisible();
-    expect(await youthDialog.textContent()).not.toContain(
-      "/tmp/smoke-import.csv",
-    );
   });
 
   test("Search refreshes save stats and shows their as-of date once a season field is in use", async ({

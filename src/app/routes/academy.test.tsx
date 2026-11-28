@@ -121,7 +121,6 @@ describe("academy route", () => {
       ),
       goals: valueOrDefault(overrides.goals, null),
       assists: valueOrDefault(overrides.assists, null),
-      internationalCaps: valueOrDefault(overrides.internationalCaps, null),
       outcome: valueOrDefault(overrides.outcome, null),
       isGraduate: valueOrDefault(overrides.isGraduate, null),
       loanedOut: overrides.loanedOut ?? false,
@@ -221,7 +220,7 @@ describe("academy route", () => {
     await user.click(screen.getByRole("tab", { name: "Graduates" }));
     expect(router.state.location.search).toEqual({ view: "graduates" });
     expect(
-      screen.getByText(/career appearances have not been imported/i),
+      screen.getByText("Needs season stats from your linked FM save."),
     ).toBeInTheDocument();
   });
 
@@ -315,7 +314,7 @@ describe("academy route", () => {
         screen.getByRole("region", { name: "Academy outcomes" }),
       ).getByText("Goals"),
     ).toHaveAccessibleDescription(
-      "Career goals have not been imported for every tracked player.",
+      "Needs season stats from your linked FM save.",
     );
 
     const outcomes = screen.getByRole("region", {
@@ -335,9 +334,6 @@ describe("academy route", () => {
     ).toHaveTextContent("0");
     expect(
       within(outcomes).getByTestId("academy-stat-assists"),
-    ).toHaveTextContent("—");
-    expect(
-      within(outcomes).getByTestId("academy-stat-international-caps"),
     ).toHaveTextContent("—");
 
     const context = screen.getByRole("region", {
@@ -364,7 +360,6 @@ describe("academy route", () => {
         reportedCareerAppearances: 1,
         goals: null,
         assists: null,
-        internationalCaps: null,
         outcome: {
           status: "sold",
           buyingClub: "North FC",

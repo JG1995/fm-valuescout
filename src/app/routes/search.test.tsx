@@ -15,6 +15,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import { academyKeys } from "@/features/academy/api/academy-keys";
 import {
   DEFAULT_GRAPHICS_STATUS,
   setGraphicsStatusIpcMock,
@@ -3776,6 +3777,7 @@ describe("search route", () => {
       searchKeys.all,
       moneyballKeys.all,
       playerKeys.all,
+      academyKeys.all,
     ]) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey });
     }

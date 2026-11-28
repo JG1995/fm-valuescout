@@ -5,13 +5,11 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
 use crate::db::Db;
-use crate::features::csv_import::service::{
-    capture_import_context, revalidate_active_import_context, CsvImportServiceError, ImportContext,
-};
+use crate::features::academy::service as academy_service;
 use crate::features::player_shortlist::replace_save_file_shortlists;
 use crate::features::save_stats::{
     self, SaveSeasonStats, SaveShortlist, SaveStaffShortlist, SaveStatsError,
@@ -86,8 +84,18 @@ pub(crate) enum SeasonStatsResult {
 
 /// The context a read is bound to, captured under one brief lock.
 struct CapturedContext {
-    import: ImportContext,
+    active: ActiveContext,
+    /// The Unique IDs of the snapshot's players.
+    player_uids: HashSet<i64>,
     linked_path: String,
+}
+
+/// The active save and its current snapshot, each with the token that changes when it does.
+struct ActiveContext {
+    save_id: i64,
+    save_context_token: String,
+    snapshot_id: i64,
+    snapshot_context_token: String,
 }
 
 /// Reads the linked file of save `save_id` and replaces its current snapshot's cohort when
@@ -193,7 +201,7 @@ fn write_lists(
         Err(SeasonStatsResult::StaleContext) => return Err(SaveShortlistsOutcome::NotRead),
         Err(_) => return Err(database_failure),
     }
-    let save_id = captured.import.active().save_id;
+    let save_id = captured.active.save_id;
     let stored = StoredLists {
         shortlists: match shortlists {
             Ok(shortlists) => SaveShortlistsOutcome::Read {
@@ -217,7 +225,7 @@ fn write_lists(
 }
 
 fn attach_cohort(db: &Db, captured: &CapturedContext, stats: SaveSeasonStats) -> SeasonStatsResult {
-    let (rows, unmatched_players) = match_cohort(&stats, captured.import.player_uids());
+    let (rows, unmatched_players) = match_cohort(&stats, &captured.player_uids);
     let game_date = stats.info.game_date;
     if rows.is_empty() {
         return SeasonStatsResult::NoMatches {
@@ -245,21 +253,42 @@ fn capture(
     save_id: i64,
     context_token: &str,
 ) -> Result<CapturedContext, SeasonStatsResult> {
-    let import = match capture_import_context(conn) {
-        Ok(import) => import,
-        Err(CsvImportServiceError::NoCurrentSnapshot) => {
-            return Err(if is_active_save(conn, save_id, context_token)? {
-                SeasonStatsResult::NoSnapshot
-            } else {
-                SeasonStatsResult::StaleContext
-            });
-        }
-        Err(_) => return Err(database_failure()),
+    let active = conn
+        .query_row(
+            "SELECT sv.id, sv.context_token, s.id, s.context_token
+             FROM saves sv
+             INNER JOIN snapshots s ON s.save_id = sv.id
+             WHERE sv.is_active = 1 AND s.is_current = 1
+             LIMIT 1",
+            [],
+            |row| {
+                Ok(ActiveContext {
+                    save_id: row.get(0)?,
+                    save_context_token: row.get(1)?,
+                    snapshot_id: row.get(2)?,
+                    snapshot_context_token: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|_| database_failure())?;
+    let Some(active) = active else {
+        return Err(if is_active_save(conn, save_id, context_token)? {
+            SeasonStatsResult::NoSnapshot
+        } else {
+            SeasonStatsResult::StaleContext
+        });
     };
-    let active = import.active();
-    if active.save_id != save_id || active.save_context_token() != context_token {
+    if active.save_id != save_id || active.save_context_token != context_token {
         return Err(SeasonStatsResult::StaleContext);
     }
+    let player_uids = conn
+        .prepare("SELECT uid FROM players WHERE snapshot_id = ?1")
+        .map_err(|_| database_failure())?
+        .query_map([active.snapshot_id], |row| row.get(0))
+        .map_err(|_| database_failure())?
+        .collect::<Result<HashSet<_>, _>>()
+        .map_err(|_| database_failure())?;
     let linked_path: Option<String> = conn
         .query_row(
             "SELECT linked_save_file_path FROM saves WHERE id = ?1",
@@ -269,7 +298,8 @@ fn capture(
         .map_err(|_| database_failure())?;
     let linked_path = linked_path.ok_or(SeasonStatsResult::NotLinked)?;
     Ok(CapturedContext {
-        import,
+        active,
+        player_uids,
         linked_path,
     })
 }
@@ -313,29 +343,47 @@ fn persist(
     let Ok(cohort) = cohort else {
         return Err(database_failure());
     };
-    let snapshot_id = captured.import.active().snapshot_id;
-    replace_snapshot_cohort(&tx, snapshot_id, cohort, game_date).map_err(|_| database_failure())?;
+    let active = &captured.active;
+    replace_snapshot_cohort(&tx, active.snapshot_id, cohort, game_date)
+        .map_err(|_| database_failure())?;
+    academy_service::record_season_readings(&tx, active.save_id, active.snapshot_id)
+        .map_err(|_| database_failure())?;
     tx.commit().map_err(|_| database_failure())
 }
 
 /// Fails with `StaleContext` unless the captured save, snapshot, and link are all still
 /// current.
 fn revalidate(conn: &Connection, captured: &CapturedContext) -> Result<(), SeasonStatsResult> {
-    let active = captured.import.active();
-    match revalidate_active_import_context(conn, active) {
-        Ok(()) => {}
-        Err(CsvImportServiceError::StaleContext) => return Err(SeasonStatsResult::StaleContext),
-        Err(_) => return Err(database_failure()),
-    }
+    let active = &captured.active;
     // Changing a link keeps the save's context token, so the link is checked on its own.
-    let same_link: bool = conn
+    let is_current: bool = conn
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM saves WHERE id = ?1 AND linked_save_file_path = ?2)",
-            params![active.save_id, captured.linked_path],
+            "SELECT EXISTS(
+                SELECT 1
+                FROM snapshots
+                WHERE id = ?1
+                  AND context_token = ?2
+                  AND save_id = ?3
+                  AND is_current = 1
+                  AND EXISTS (
+                      SELECT 1 FROM saves
+                      WHERE id = ?3
+                        AND context_token = ?4
+                        AND is_active = 1
+                        AND linked_save_file_path = ?5
+                  )
+            )",
+            params![
+                active.snapshot_id,
+                active.snapshot_context_token,
+                active.save_id,
+                active.save_context_token,
+                captured.linked_path,
+            ],
             |row| row.get(0),
         )
         .map_err(|_| database_failure())?;
-    if same_link {
+    if is_current {
         Ok(())
     } else {
         Err(SeasonStatsResult::StaleContext)
@@ -572,7 +620,7 @@ mod tests {
             .unwrap_or_else(|result| panic!("capture failed: {result:?}"));
             let stats =
                 save_stats::read_season_stats(Path::new(&captured.linked_path)).expect("read save");
-            let (rows, _) = match_cohort(&stats, captured.import.player_uids());
+            let (rows, _) = match_cohort(&stats, &captured.player_uids);
             (captured, rows)
         }
 
@@ -604,6 +652,41 @@ mod tests {
             ]
         );
         assert_eq!(fixture.state(), (2, Some(GAME_DATE.to_string())));
+    }
+
+    #[test]
+    fn a_read_carries_the_career_of_an_academy_member_forward() {
+        let fixture = fixture();
+        fixture.link_matching_save();
+        fixture
+            .db
+            .0
+            .lock()
+            .expect("lock")
+            .execute_batch(&format!(
+                "INSERT INTO academy_classes (save_id, class_year) VALUES ({0}, 2031);
+                 INSERT INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
+                 VALUES ({0}, last_insert_rowid(), 20, 'Attach player');",
+                fixture.save_id
+            ))
+            .expect("insert academy member");
+
+        fixture.attach();
+
+        let career: (String, i64, i64) = fixture
+            .db
+            .0
+            .lock()
+            .expect("lock")
+            .query_row(
+                "SELECT season_as_of, season_appearances, season_goals
+                 FROM academy_member_career_stats
+                 WHERE save_id = ?1 AND player_uid = 20",
+                [fixture.save_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read stored career");
+        assert_eq!(career, (GAME_DATE.to_string(), 1, 3));
     }
 
     #[test]

@@ -397,7 +397,6 @@ function academyMemberFromCandidate(
     reportedCareerAppearances: null,
     goals: null,
     assists: null,
-    internationalCaps: null,
     outcome: null,
     isGraduate: null,
     loanedOut: false,

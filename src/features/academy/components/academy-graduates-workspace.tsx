@@ -60,8 +60,7 @@ export function AcademyGraduatesWorkspace({
     return (
       <Panel>
         <EmptyState icon={GraduationCap} title="No graduates yet">
-          A player becomes a graduate after one or more reported career
-          appearances.
+          A player becomes a graduate with one competitive appearance.
         </EmptyState>
       </Panel>
     );
@@ -108,7 +107,7 @@ function AcademyGraduatesUnavailable() {
   return (
     <Panel>
       <EmptyState icon={GraduationCap} title="Graduate data unavailable">
-        Career appearances have not been imported for every tracked player.
+        Needs season stats from your linked FM save.
       </EmptyState>
     </Panel>
   );

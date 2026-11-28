@@ -40,7 +40,6 @@ export type AcademyMember = {
   reportedCareerAppearances: number | null;
   goals: number | null;
   assists: number | null;
-  internationalCaps: number | null;
   outcome: AcademyMemberOutcome | null;
   isGraduate: boolean | null;
   /** The club has loaned the member out; `currentClub` is the borrower. */

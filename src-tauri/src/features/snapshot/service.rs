@@ -717,6 +717,20 @@ mod tests {
         conn.last_insert_rowid()
     }
 
+    /// Gives the save an Academy class whose one member, player 77, has a stored career.
+    fn insert_academy_career(conn: &Connection, save_id: i64) {
+        conn.execute_batch(&format!(
+            "INSERT INTO academy_classes (save_id, class_year) VALUES ({save_id}, 2027);
+             INSERT INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
+             VALUES ({save_id}, last_insert_rowid(), 77, 'Academy Player');
+             INSERT INTO academy_member_career_stats (
+                 save_id, player_uid, closed_appearances, closed_goals, closed_assists,
+                 season_as_of, season_minutes, season_appearances, season_goals, season_assists
+             ) VALUES ({save_id}, 77, 3, 0, 0, '2027-05-22', 0, 0, 0, 0);"
+        ))
+        .expect("insert academy career");
+    }
+
     fn insert_player(conn: &Connection, snapshot_id: i64, uid: i64) {
         let attributes = DUMP_ATTRIBUTE_KEYS
             .iter()
@@ -1315,12 +1329,7 @@ mod tests {
             [save.id],
         )
         .expect("insert planner setting");
-        conn.execute(
-            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
-             VALUES (?1, 77, 3)",
-            [save.id],
-        )
-        .expect("insert youth enrichment");
+        insert_academy_career(&conn, save.id);
         let academy_class_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1",
@@ -1377,11 +1386,11 @@ mod tests {
         );
         assert_eq!(
             conn.query_row(
-                "SELECT COUNT(*) FROM player_youth_career_stats",
+                "SELECT COUNT(*) FROM academy_member_career_stats",
                 [],
                 |row| row.get::<_, i64>(0)
             )
-            .expect("count retained youth enrichment"),
+            .expect("count retained academy careers"),
             1
         );
         assert_eq!(
@@ -1820,12 +1829,7 @@ mod tests {
             [inactive.id],
         )
         .expect("insert inactive Club DNA definition");
-        conn.execute(
-            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
-             VALUES (?1, 77, 3)",
-            [inactive.id],
-        )
-        .expect("insert inactive youth enrichment");
+        insert_academy_career(&conn, inactive.id);
         let inactive_token = save_token(&conn, inactive.id);
 
         let inactive_result =
@@ -1845,8 +1849,8 @@ mod tests {
         for table in [
             "managed_club_settings",
             "club_dna_definitions",
-            "player_youth_career_stats",
             "academy_classes",
+            "academy_member_career_stats",
         ] {
             let remaining: i64 = conn
                 .query_row(
@@ -1911,17 +1915,7 @@ mod tests {
             [save.id],
         )
         .expect("insert Club DNA definition");
-        conn.execute(
-            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
-             VALUES (?1, 77, 3)",
-            [save.id],
-        )
-        .expect("insert youth enrichment");
-        conn.execute(
-            "INSERT INTO academy_classes (save_id, class_year) VALUES (?1, 2027)",
-            [save.id],
-        )
-        .expect("insert academy class");
+        insert_academy_career(&conn, save.id);
         select_current_snapshot_for_test(&mut conn, save.id);
         conn.execute_batch(
             "CREATE TRIGGER reject_replacement_save
@@ -1954,8 +1948,8 @@ mod tests {
         for table in [
             "managed_club_settings",
             "club_dna_definitions",
-            "player_youth_career_stats",
             "academy_classes",
+            "academy_member_career_stats",
         ] {
             let remaining: i64 = conn
                 .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {

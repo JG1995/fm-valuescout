@@ -8,7 +8,6 @@ function academyMember(
     reportedCareerAppearances?: number | null;
     goals?: number | null;
     assists?: number | null;
-    internationalCaps?: number | null;
   } = {},
 ): AcademyMember {
   return {
@@ -29,7 +28,6 @@ function academyMember(
     reportedCareerAppearances: career.reportedCareerAppearances ?? null,
     goals: career.goals ?? null,
     assists: career.assists ?? null,
-    internationalCaps: career.internationalCaps ?? null,
     outcome,
     isGraduate: null,
     loanedOut: false,
@@ -70,20 +68,17 @@ describe("summarizeAcademyMembers", () => {
           reportedCareerAppearances: 2,
           goals: 3,
           assists: 4,
-          internationalCaps: 5,
         }),
         academyMember(null, {
           reportedCareerAppearances: 0,
           goals: 6,
           assists: 7,
-          internationalCaps: 8,
         }),
       ]),
     ).toMatchObject({
       graduates: 1,
       goals: 9,
       assists: 11,
-      internationalCaps: 13,
     });
 
     expect(
@@ -92,20 +87,17 @@ describe("summarizeAcademyMembers", () => {
           reportedCareerAppearances: 2,
           goals: 3,
           assists: 4,
-          internationalCaps: 5,
         }),
         academyMember(null, {
           reportedCareerAppearances: null,
           goals: null,
           assists: null,
-          internationalCaps: null,
         }),
       ]),
     ).toMatchObject({
       graduates: null,
       goals: null,
       assists: null,
-      internationalCaps: null,
     });
   });
 });
