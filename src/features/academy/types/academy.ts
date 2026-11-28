@@ -1,7 +1,6 @@
 export type AcademyClass = {
   id: number;
   classYear: number;
-  isAutomatic: boolean;
   memberCount: number;
 };
 

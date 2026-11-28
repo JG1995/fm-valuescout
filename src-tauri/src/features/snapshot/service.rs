@@ -3,7 +3,6 @@ use std::path::Path;
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 
 use crate::features::{
-    academy::service as academy_service,
     memory_read::dump_validation::canonical_game_date,
     player_metrics::potential_scores,
     save_stats::{self, SaveStatsError},
@@ -141,51 +140,31 @@ fn create_default_save_in_transaction(tx: &Transaction<'_>) -> Result<i64, Strin
         [DEFAULT_SAVE_NAME],
     )
     .map_err(|error| error.to_string())?;
-    let save_id = tx.last_insert_rowid();
-    academy_service::ensure_baseline_class(tx, save_id)?;
-    Ok(save_id)
+    Ok(tx.last_insert_rowid())
 }
 
-/// Creates the default save when no save exists, and the active save's baseline class when it
-/// is missing. It writes only then, so read connections can run it once the app's startup
-/// ensure has run on the writer.
+/// Creates the default save when no save exists. It writes only then, so read connections can
+/// run it once the app's startup ensure has run on the writer.
 pub fn ensure_default_save(conn: &Connection) -> Result<(), String> {
-    let active_save_id: Option<i64> = conn
+    let has_active_save: bool = conn
         .query_row(
-            "SELECT id FROM saves WHERE is_active = 1 LIMIT 1",
+            "SELECT EXISTS(SELECT 1 FROM saves WHERE is_active = 1)",
             [],
             |row| row.get(0),
         )
-        .optional()
         .map_err(|error| error.to_string())?;
-    if let Some(save_id) = active_save_id {
-        if academy_service::has_baseline_class(conn, save_id)? {
-            return Ok(());
-        }
+    if has_active_save {
+        return Ok(());
     }
 
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|error| error.to_string())?;
-    tx.execute(
+    conn.execute(
         "INSERT INTO saves (name, is_active)
          SELECT ?1, 1
          WHERE NOT EXISTS (SELECT 1 FROM saves)",
         params![DEFAULT_SAVE_NAME],
     )
-    .map_err(|error| error.to_string())?;
-
-    let save_id: i64 = tx
-        .query_row(
-            "SELECT id FROM saves WHERE is_active = 1 LIMIT 1",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    academy_service::ensure_baseline_class(&tx, save_id)?;
-    tx.commit().map_err(|error| error.to_string())?;
-
-    Ok(())
+    .map(|_| ())
+    .map_err(|error| error.to_string())
 }
 
 pub fn active_save_id(conn: &Connection) -> Result<i64, String> {
@@ -297,19 +276,12 @@ pub(crate) fn create_save_with_link(
     let name = validate_save_name(name)?;
     ensure_default_save(conn)?;
 
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|error| error.to_string())?;
-    tx.execute(
+    conn.execute(
         "INSERT INTO saves (name, is_active, linked_save_file_path) VALUES (?1, 0, ?2)",
         params![name, linked_save_file.map(|file| file.0.as_str())],
     )
     .map_err(|error| error.to_string())?;
-
-    let id = tx.last_insert_rowid();
-    academy_service::ensure_baseline_class(&tx, id)?;
-    tx.commit().map_err(|error| error.to_string())?;
-    get_save_by_id(conn, id)
+    get_save_by_id(conn, conn.last_insert_rowid())
 }
 
 pub fn rename_save(conn: &Connection, save_id: i64, name: &str) -> Result<SaveSummary, String> {
@@ -473,23 +445,7 @@ pub fn delete_snapshot(
     .map_err(|error| error.to_string())?;
 
     let current_snapshot_id = if was_current {
-        let next_snapshot_id = select_current_snapshot(&tx, save_id)?;
-        if let Some(next_snapshot_id) = next_snapshot_id {
-            let (game_date, game_date_source): (Option<String>, String) = tx
-                .query_row(
-                    "SELECT game_date, game_date_source FROM snapshots WHERE id = ?1",
-                    [next_snapshot_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .map_err(|error| error.to_string())?;
-            academy_service::ensure_class_for_game_date(
-                &tx,
-                save_id,
-                game_date.as_deref(),
-                &game_date_source,
-            )?;
-        }
-        next_snapshot_id
+        select_current_snapshot(&tx, save_id)?
     } else {
         tx.query_row(
             "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
@@ -942,37 +898,20 @@ mod tests {
     }
 
     #[test]
-    fn default_save_ensure_writes_only_when_the_save_or_its_baseline_class_is_missing() {
+    fn default_save_ensure_writes_only_when_no_save_exists() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db = crate::db::open(&temp_dir.path().join(crate::db::APP_DB_FILE)).expect("open db");
-        let baseline_classes = |conn: &Connection| -> i64 {
-            conn.query_row(
-                "SELECT COUNT(*) FROM academy_classes WHERE class_year = 2025 AND is_automatic = 1",
-                [],
-                |row| row.get(0),
-            )
-            .expect("count baseline classes")
-        };
         let generation = || db.read().expect("acquire reader").generation();
 
         ensure_default_save(&db.0.lock().expect("lock writer"))
             .expect("create on a fresh database");
         let reader = db.read().expect("acquire reader");
         assert_eq!(save_count(&reader), Ok(1));
-        assert_eq!(baseline_classes(&reader), 1);
         ensure_default_save(&reader).expect("an ensured save needs no write on a reader");
         drop(reader);
         let ensured = generation();
         ensure_default_save(&db.0.lock().expect("lock writer")).expect("ensure again");
         assert_eq!(generation(), ensured, "an ensured save changes nothing");
-
-        db.0.lock()
-            .expect("lock writer")
-            .execute("DELETE FROM academy_classes", [])
-            .expect("remove the baseline class");
-        ensure_default_save(&db.0.lock().expect("lock writer")).expect("restore the baseline");
-        assert_eq!(baseline_classes(&db.read().expect("acquire reader")), 1);
-        assert_eq!(save_count(&db.read().expect("acquire reader")), Ok(1));
     }
 
     #[test]
@@ -1560,16 +1499,6 @@ mod tests {
             .expect("read unchanged promoted score"),
             (1, 1, Some(55))
         );
-        assert_eq!(
-            conn.query_row(
-                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2026 AND is_automatic = 1",
-                [save.id],
-                |row| row.get::<_, i64>(0),
-            )
-            .expect("read promoted automatic class"),
-            1
-        );
-
         let promoted_token = snapshot_token(&conn, promoted);
         let final_result =
             delete_snapshot(&mut conn, promoted, &promoted_token).expect("delete final snapshot");
@@ -1945,15 +1874,6 @@ mod tests {
         assert!(final_result.deleted_was_active);
         assert!(final_result.active_save.is_active);
         assert_eq!(save_count(&conn).expect("count recreated saves"), 1);
-        assert_eq!(
-            conn.query_row(
-                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2025",
-                [final_result.active_save.id],
-                |row| row.get::<_, i64>(0),
-            )
-            .expect("read recreated baseline class"),
-            1
-        );
         assert!(
             delete_save(&mut conn, final_result.active_save.id, &final_token)
                 .expect_err("reject reused save id with old token")
@@ -1965,7 +1885,7 @@ mod tests {
     }
 
     #[test]
-    fn deleting_the_final_save_rolls_back_after_replacement_baseline_failure() {
+    fn deleting_the_final_save_rolls_back_after_replacement_failure() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("delete-final-save-rollback.db"));
         let save = list_saves(&conn)
@@ -1997,20 +1917,24 @@ mod tests {
             [save.id],
         )
         .expect("insert youth enrichment");
+        conn.execute(
+            "INSERT INTO academy_classes (save_id, class_year) VALUES (?1, 2027)",
+            [save.id],
+        )
+        .expect("insert academy class");
         select_current_snapshot_for_test(&mut conn, save.id);
         conn.execute_batch(
-            "CREATE TRIGGER reject_recreated_baseline
-             BEFORE INSERT ON academy_classes
-             WHEN NEW.class_year = 2025
+            "CREATE TRIGGER reject_replacement_save
+             BEFORE INSERT ON saves
              BEGIN
-                 SELECT RAISE(ABORT, 'test replacement baseline failure');
+                 SELECT RAISE(ABORT, 'test replacement save failure');
              END;",
         )
         .expect("create replacement failure trigger");
 
         assert!(delete_save(&mut conn, save.id, &save.context_token)
             .expect_err("reject final save replacement")
-            .contains("test replacement baseline failure"));
+            .contains("test replacement save failure"));
 
         assert_eq!(save_count(&conn).expect("count rolled-back saves"), 1);
         assert_eq!(
@@ -2394,50 +2318,5 @@ mod tests {
         );
         assert_eq!(compact_row_count(&staff_conn, older), 0);
         assert_eq!(compact_row_count(&staff_conn, current), 1);
-    }
-
-    #[test]
-    fn date_edit_creates_no_academy_class() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("no-academy-game-date.db"));
-        let (save, older, current) = game_date_edit_setup(&mut conn);
-        select_current_snapshot_for_test(&mut conn, save.id);
-        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
-        let classes_before: Vec<(i64, i32)> = conn
-            .prepare(
-                "SELECT class_year, is_automatic FROM academy_classes
-                 WHERE save_id = ?1 ORDER BY class_year",
-            )
-            .expect("prepare academy classes")
-            .query_map([save.id], |row| Ok((row.get(0)?, row.get(1)?)))
-            .expect("read academy classes")
-            .collect::<Result<Vec<_>, _>>()
-            .expect("collect academy classes");
-        conn.execute_batch(
-            "CREATE TRIGGER reject_academy_class_writes
-             BEFORE INSERT ON academy_classes
-             BEGIN SELECT RAISE(ABORT, 'date edit must not create Academy classes'); END;",
-        )
-        .expect("reject Academy class writes");
-
-        let older_token = snapshot_token(&conn, older);
-        let promoted = update_snapshot_game_date(&mut conn, older, &older_token, "2028-01-01")
-            .expect("promoting edit must not write Academy classes");
-
-        assert_eq!(promoted.current_snapshot_id, Some(older));
-        let classes_after: Vec<(i64, i32)> = conn
-            .prepare(
-                "SELECT class_year, is_automatic FROM academy_classes
-                 WHERE save_id = ?1 ORDER BY class_year",
-            )
-            .expect("prepare academy classes")
-            .query_map([save.id], |row| Ok((row.get(0)?, row.get(1)?)))
-            .expect("read academy classes")
-            .collect::<Result<Vec<_>, _>>()
-            .expect("collect academy classes");
-        assert_eq!(
-            classes_after, classes_before,
-            "no Academy class may be created or changed by a date edit"
-        );
     }
 }

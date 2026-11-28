@@ -113,7 +113,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         },
       ] : [];
       const academyClasses = academyWorkspace
-        ? [{ id: 7, classYear: 2026, isAutomatic: false, memberCount: 2 }]
+        ? [{ id: 7, classYear: 2026, memberCount: 2 }]
         : [];
       const academyMembers = academyWorkspace
         ? [

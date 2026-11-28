@@ -158,11 +158,9 @@ export function AcademyClassWorkspace({
             >
               Add players
             </Button>
-            {!academyClass.isAutomatic ? (
-              <Button variant="ghost" icon={Trash2} onClick={onDelete}>
-                Delete class
-              </Button>
-            ) : null}
+            <Button variant="ghost" icon={Trash2} onClick={onDelete}>
+              Delete class
+            </Button>
           </div>
         }
       >

@@ -23,10 +23,6 @@ let deferredClassesFetch: {
   resolve: (value: AcademyClass[]) => void;
 } | null = null;
 
-type AcademyClassInput = Omit<AcademyClass, "isAutomatic"> & {
-  isAutomatic?: boolean;
-};
-
 export function resetAcademyIpcMock() {
   classes = [];
   nextClassId = 1;
@@ -44,13 +40,8 @@ export function resetAcademyIpcMock() {
   deferredClassesFetch = null;
 }
 
-export function setAcademyClasses(value: AcademyClassInput[]) {
-  classes = value
-    .map((academyClass) => ({
-      ...academyClass,
-      isAutomatic: academyClass.isAutomatic ?? false,
-    }))
-    .sort((left, right) => left.classYear - right.classYear);
+export function setAcademyClasses(value: AcademyClass[]) {
+  classes = [...value].sort((left, right) => left.classYear - right.classYear);
   nextClassId =
     Math.max(0, ...classes.map((academyClass) => academyClass.id)) + 1;
 }
@@ -151,7 +142,6 @@ export function resolveCreateAcademyClassIpcMock(args: unknown) {
   const created: AcademyClass = {
     id: nextClassId,
     classYear,
-    isAutomatic: false,
     memberCount: 0,
   };
   nextClassId += 1;
@@ -181,12 +171,6 @@ export function resolveDeleteAcademyClassIpcMock(args: unknown) {
   if (!confirmed) {
     throw "Deleting an academy class requires confirmation";
   }
-  if (
-    classes.find((academyClass) => academyClass.id === classId)?.isAutomatic
-  ) {
-    throw "Automatically managed academy classes cannot be deleted";
-  }
-
   const remaining = classes.filter(
     (academyClass) => academyClass.id !== classId,
   );

@@ -257,19 +257,6 @@ describe("academy route", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not offer deletion for an automatically managed class", async () => {
-    await loadConfiguredSave();
-    setAcademyClasses([
-      { id: 7, classYear: 2025, memberCount: 0, isAutomatic: true },
-    ]);
-    renderAcademyRoute("/academy?view=class&classId=7");
-
-    expect(
-      await screen.findByRole("combobox", { name: "Academy class" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete class" })).toBeNull();
-  });
-
   it("switches Academy classes from the Class workspace", async () => {
     const user = userEvent.setup();
     await loadConfiguredSave();
