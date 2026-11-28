@@ -987,7 +987,7 @@ describe("academy route", () => {
     ).toHaveValue("Other FC");
     expect(
       within(dialog).queryByRole("button", {
-        name: "Restore to still at club",
+        name: "Clear record",
       }),
     ).toBeNull();
     await user.type(
@@ -1134,9 +1134,9 @@ describe("academy route", () => {
     await user.click(
       within(
         await screen.findByRole("dialog", {
-          name: "Restore Club prospect to still at club?",
+          name: "Clear the recorded outcome for Club prospect?",
         }),
-      ).getByRole("button", { name: "Restore player" }),
+      ).getByRole("button", { name: "Clear record" }),
     );
     expect(
       await screen.findByRole("heading", {
@@ -1216,7 +1216,7 @@ describe("academy route", () => {
     });
     await user.click(
       within(dialog).getByRole("button", {
-        name: "Restore to still at club",
+        name: "Clear record",
       }),
     );
 

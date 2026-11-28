@@ -142,20 +142,20 @@ export function AcademyMemberOutcomeModal({
       ? `${recordedSale ? "Edit" : "Record"} sale for ${name}`
       : activeMode === "released"
         ? `Mark ${name} as released?`
-        : `Restore ${name} to still at club?`;
+        : `Clear the recorded outcome for ${name}?`;
   const submitLabel =
     activeMode === "sale"
       ? "Save sale"
       : activeMode === "released"
         ? "Mark released"
-        : "Restore player";
+        : "Clear record";
   const pendingLabel =
     activeMode === "sale"
       ? "Saving…"
       : activeMode === "released"
         ? "Marking…"
-        : "Restoring…";
-  const restoreExistingSale = activeMode === "sale" && recordedSale;
+        : "Clearing…";
+  const clearRecordedSale = activeMode === "sale" && recordedSale;
 
   const selectClub = (club: string) => {
     setBuyingClub(club);
@@ -182,15 +182,15 @@ export function AcademyMemberOutcomeModal({
       }}
       footer={
         <>
-          {restoreExistingSale ? (
+          {clearRecordedSale ? (
             <Button
               disabled={mutation.isPending}
               loading={pendingMode === "clear"}
-              loadingLabel="Restoring…"
+              loadingLabel="Clearing…"
               variant="secondary"
               onClick={() => mutation.mutate("clear")}
             >
-              Restore to still at club
+              Clear record
             </Button>
           ) : null}
           <Button
