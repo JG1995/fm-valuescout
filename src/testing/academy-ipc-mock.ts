@@ -3,6 +3,7 @@ import type {
   AcademyClass,
   AcademyClassDetail,
   AcademyMember,
+  AcademyMemberOutcomeInput,
 } from "@/features/academy/types/academy";
 
 let classes: AcademyClass[] = [];
@@ -322,7 +323,10 @@ export function resolveSetAcademyMemberOutcomeIpcMock(args: unknown) {
     classId,
     members.map((candidate) =>
       candidate.playerUid === playerUid
-        ? { ...candidate, outcome: outcome ? { ...outcome } : null }
+        ? {
+            ...candidate,
+            outcome: outcome ? { ...outcome, recorded: true } : null,
+          }
         : candidate,
     ),
   );
@@ -344,7 +348,7 @@ function readStringArg(args: unknown, name: string) {
   return typeof record[name] === "string" ? record[name] : "";
 }
 
-function readOutcomeArg(args: unknown): AcademyMember["outcome"] {
+function readOutcomeArg(args: unknown): AcademyMemberOutcomeInput | null {
   if (typeof args !== "object" || args === null || !("outcome" in args)) {
     return null;
   }

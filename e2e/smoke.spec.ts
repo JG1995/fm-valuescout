@@ -452,11 +452,11 @@ test.describe("application smoke", () => {
       await selected.focus();
       await expect(selected).toHaveCSS("outline-width", "2px");
       const group = main.getByRole("region", {
-        name: "Still at club (50)",
+        name: "Still at club (49)",
         exact: true,
       });
       const table = group.getByRole("table");
-      await expect(table.locator("tbody tr")).toHaveCount(50);
+      await expect(table.locator("tbody tr")).toHaveCount(49);
       const scroller = table.locator("..");
       const initialBox = await scroller.boundingBox();
       const rows = await table.locator("tbody tr").evaluateAll((elements) =>
@@ -494,12 +494,16 @@ test.describe("application smoke", () => {
         "title",
         "Club Deportivo Internacional de Desarrollo Juvenil Barcelona",
       );
-      for (const name of ["Sold (0)", "Released (0)"]) {
-        const empty = main.getByRole("region", { name, exact: true });
-        await expect(empty.getByRole("table")).toHaveCount(0);
-        await expect(empty).toContainText("No players");
-        expect((await empty.boundingBox())?.height).toBeLessThanOrEqual(32);
-      }
+      const empty = main.getByRole("region", { name: "Sold (0)", exact: true });
+      await expect(empty.getByRole("table")).toHaveCount(0);
+      await expect(empty).toContainText("No players");
+      expect((await empty.boundingBox())?.height).toBeLessThanOrEqual(32);
+      // The member the snapshot no longer holds is released without a record to restore.
+      const released = main
+        .getByRole("region", { name: "Released (1)", exact: true })
+        .locator("tbody tr");
+      await expect(released).toHaveCount(1);
+      await expect(released.getByRole("button")).toHaveText(["Sell", "Remove"]);
       const lastRow = table.locator("tbody tr").last();
       for (const name of ["Sell", "Release", "Remove"]) {
         const action = lastRow.getByRole("button", { name, exact: true });
@@ -559,7 +563,7 @@ test.describe("application smoke", () => {
       );
       await page.keyboard.press("Enter");
       const confirmation = page.getByRole("dialog", {
-        name: "Remove Academy prospect 050 from Class of 2026?",
+        name: "Remove Academy prospect 049 from Class of 2026?",
       });
       await expect(confirmation).toContainText(
         "deletes any manual sale or release outcome",
@@ -569,7 +573,7 @@ test.describe("application smoke", () => {
       ).toHaveClass(/bg-error/);
       await confirmation.getByRole("button", { name: "Cancel" }).click();
       await expect(remove).toBeFocused();
-      await expect(table.locator("tbody tr")).toHaveCount(50);
+      await expect(table.locator("tbody tr")).toHaveCount(49);
       expect(
         await main.evaluate((element) => {
           const node = element as unknown as {

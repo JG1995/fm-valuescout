@@ -169,13 +169,17 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             playerUid: index + 100,
             lastKnownName: name,
             currentName: unresolved ? null : name,
-            state: unresolved ? "unresolved" : index === 0 ? "departed" : "resolved",
+            state: unresolved ? "unresolved" : "resolved",
             currentClub: unresolved ? null : index === 0
               ? "Club Deportivo Internacional de Desarrollo Juvenil Barcelona"
               : "Barcelona U19",
             reportedCareerAppearances: unresolved ? null : 0,
             goals: unresolved ? null : 0,
             assists: unresolved ? null : 0,
+            // The snapshot no longer holds him, so it shows him as released.
+            outcome: unresolved
+              ? { status: "released", buyingClub: null, saleFeeEur: null, recorded: false }
+              : null,
             isGraduate: unresolved ? null : false,
           };
         }));

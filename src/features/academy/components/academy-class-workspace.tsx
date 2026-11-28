@@ -370,12 +370,11 @@ function AcademyRosterRow({
   onRemove,
 }: AcademyRosterRowProps) {
   const name = member.currentName ?? member.lastKnownName;
+  // A member who left is grouped by his outcome; only one the snapshot lacks needs a note.
   const warning =
-    member.state === "departed"
-      ? "No longer at your managed club"
-      : member.state === "unresolved"
-        ? "Unavailable in the current snapshot"
-        : null;
+    member.state === "unresolved"
+      ? "Unavailable in the current snapshot"
+      : null;
   const positions = playableAcademyPositions(member.positions).join(", ");
   const rowTone =
     member.outcome?.status === "sold"
@@ -509,6 +508,8 @@ function AcademyMemberActions({
   onRemove,
 }: AcademyMemberActionsProps) {
   const released = member.outcome?.status === "released";
+  // A release the snapshot shows was not recorded, so there is nothing to restore.
+  const observedRelease = released && !member.outcome?.recorded;
 
   return (
     <fieldset
@@ -531,21 +532,23 @@ function AcademyMemberActions({
       >
         Sell
       </Button>
-      <Button
-        disabled={disabled}
-        icon={released ? RotateCcw : UserRoundMinus}
-        variant="ghost"
-        className="px-3"
-        onClick={(event) =>
-          onOpenOutcome(
-            member,
-            released ? "clear" : "released",
-            event.currentTarget,
-          )
-        }
-      >
-        {released ? "Restore" : "Release"}
-      </Button>
+      {observedRelease ? null : (
+        <Button
+          disabled={disabled}
+          icon={released ? RotateCcw : UserRoundMinus}
+          variant="ghost"
+          className="px-3"
+          onClick={(event) =>
+            onOpenOutcome(
+              member,
+              released ? "clear" : "released",
+              event.currentTarget,
+            )
+          }
+        >
+          {released ? "Restore" : "Release"}
+        </Button>
+      )}
       <Button
         disabled={disabled}
         icon={Trash2}

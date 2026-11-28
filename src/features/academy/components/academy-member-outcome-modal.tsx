@@ -133,9 +133,13 @@ export function AcademyMemberOutcomeModal({
     return null;
   }
 
+  // Only a sale the user recorded can be edited or undone; one the snapshot shows has no fee
+  // yet.
+  const recordedSale =
+    activeTarget.outcome?.status === "sold" && activeTarget.outcome.recorded;
   const title =
     activeMode === "sale"
-      ? `${activeTarget.outcome?.status === "sold" ? "Edit" : "Record"} sale for ${name}`
+      ? `${recordedSale ? "Edit" : "Record"} sale for ${name}`
       : activeMode === "released"
         ? `Mark ${name} as released?`
         : `Restore ${name} to still at club?`;
@@ -151,8 +155,7 @@ export function AcademyMemberOutcomeModal({
       : activeMode === "released"
         ? "Marking…"
         : "Restoring…";
-  const restoreExistingSale =
-    activeMode === "sale" && activeTarget.outcome?.status === "sold";
+  const restoreExistingSale = activeMode === "sale" && recordedSale;
 
   const selectClub = (club: string) => {
     setBuyingClub(club);

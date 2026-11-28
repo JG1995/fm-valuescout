@@ -74,7 +74,10 @@ impl AcademyMemberOutcomeStatus {
 pub struct AcademyMemberOutcome {
     pub status: AcademyMemberOutcomeStatus,
     pub buying_club: Option<String>,
+    /// Always known for a recorded sale, never for an observed one.
     pub sale_fee_eur: Option<i64>,
+    /// The user recorded it. Otherwise the current snapshot shows it.
+    pub recorded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,8 +164,9 @@ impl CareerStats {
     // Upgrade to the save's archived season history (fmsave `player_season_history`) if a
     // member's totals fall more than a few matches a season short of FM's career history.
     fn advance(self, reading: SeasonReading) -> Self {
-        // A read dated before the last one comes from an earlier save of the same season.
-        if reading.as_of < self.season.as_of || reading.minutes >= self.season.minutes {
+        // A read not dated after the last one comes from an earlier save of the same season,
+        // or from the same day played again.
+        if reading.as_of <= self.season.as_of || reading.minutes >= self.season.minutes {
             return Self {
                 season: reading,
                 ..self
@@ -507,7 +511,12 @@ pub fn get_class(
                     Some(career) => Some(career),
                     None => retained_career(conn, save_id, player_uid)?,
                 };
-                let outcome = stored_member_outcome(status, buying_club, sale_fee_eur)?;
+                // What the user recorded stands; otherwise the snapshot says what became of him.
+                let outcome = match stored_member_outcome(status, buying_club, sale_fee_eur)? {
+                    Some(recorded) => Some(recorded),
+                    None if snapshot_id.is_some() => observed_outcome(player.as_ref()),
+                    None => None,
+                };
                 Ok(academy_member(
                     player_uid,
                     last_known_name,
@@ -927,6 +936,7 @@ fn validate_member_outcome(
                 status: AcademyMemberOutcomeStatus::Sold,
                 buying_club: Some(buying_club),
                 sale_fee_eur: Some(sale_fee_eur),
+                recorded: true,
             })
         }
         "released" => {
@@ -937,10 +947,32 @@ fn validate_member_outcome(
                 status: AcademyMemberOutcomeStatus::Released,
                 buying_club: None,
                 sale_fee_eur: None,
+                recorded: true,
             })
         }
         _ => Err(format!("Unknown academy outcome status `{}`", input.status)),
     }
+}
+
+/// What the current snapshot shows became of a member with no recorded outcome: sold to the
+/// club that owns him now, or released when no club does or the game no longer holds him.
+/// `None` while the managed club owns him. The fee of an observed sale is not known.
+fn observed_outcome(player: Option<&CurrentAcademyPlayer>) -> Option<AcademyMemberOutcome> {
+    if player.is_some_and(|player| player.in_managed_club) {
+        return None;
+    }
+    // A player on loan is owned by his parent club, not the club he plays at.
+    let owner =
+        player.and_then(|player| player.parent_club.as_ref().or(player.current_club.as_ref()));
+    Some(AcademyMemberOutcome {
+        status: match owner {
+            Some(_) => AcademyMemberOutcomeStatus::Sold,
+            None => AcademyMemberOutcomeStatus::Released,
+        },
+        buying_club: owner.cloned(),
+        sale_fee_eur: None,
+        recorded: false,
+    })
 }
 
 fn stored_member_outcome(
@@ -1854,6 +1886,12 @@ mod tests {
             (Some(24), Some(7), Some(2), Some(true)),
             "an earlier save of the same season closes nothing"
         );
+        read_season(&conn, save_id, "2027-08-20", 77, [90, 1, 0, 0, 0]);
+        assert_eq!(
+            career(&conn),
+            (Some(23), Some(6), Some(2), Some(true)),
+            "the same day played again closes nothing"
+        );
 
         ingest_players(
             &temp_dir,
@@ -1869,7 +1907,7 @@ mod tests {
         );
         assert_eq!(
             career(&conn),
-            (Some(24), Some(7), Some(2), Some(true)),
+            (Some(23), Some(6), Some(2), Some(true)),
             "a member the snapshot no longer holds keeps his career"
         );
     }
@@ -1949,6 +1987,165 @@ mod tests {
     }
 
     #[test]
+    fn a_member_who_left_shows_what_the_snapshot_says_until_an_outcome_is_recorded() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-departures.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let names = [
+            (71, "Stayed"),
+            (72, "Loaned Out"),
+            (73, "Moved"),
+            (74, "On Loan Elsewhere"),
+            (75, "No Club"),
+            (76, "Gone From Game"),
+        ];
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "all-at-club.json",
+            Some("2027-05-22"),
+            names
+                .iter()
+                .map(|(uid, name)| club_youngster(*uid, name, 17))
+                .collect(),
+        );
+        configure_managed_club(&conn, save_id);
+        let class_id = super::create_class(&conn, save_id, 2026)
+            .expect("create class")
+            .id;
+        for (uid, _) in names {
+            super::assign_member(&conn, save_id, class_id, uid).expect("assign member");
+        }
+        /// (status, buying club, sale fee, recorded), or `None` for no outcome.
+        type Outcome = Option<(String, Option<String>, Option<i64>, bool)>;
+        let outcomes = |conn: &Connection| -> BTreeMap<i64, Outcome> {
+            super::get_class(conn, save_id, class_id)
+                .expect("read class")
+                .members
+                .into_iter()
+                .map(|member| {
+                    let outcome = member.outcome.map(|outcome| {
+                        (
+                            outcome.status.as_str().to_string(),
+                            outcome.buying_club,
+                            outcome.sale_fee_eur,
+                            outcome.recorded,
+                        )
+                    });
+                    (member.player_uid, outcome)
+                })
+                .collect()
+        };
+        assert!(outcomes(&conn).values().all(Option::is_none));
+
+        let at = |mut player: Value, club: Option<(&str, i64)>, owner: Option<(&str, i64)>| {
+            player["currentClub"] = json!(club.map(|(name, _)| name));
+            player["currentClubUid"] = json!(club.map(|(_, uid)| uid));
+            player["parentClub"] = json!(owner.map(|(name, _)| name));
+            player["parentClubUid"] = json!(owner.map(|(_, uid)| uid));
+            player["onLoan"] = json!(club != owner);
+            player
+        };
+        let managed = Some(("Loan FC", 1000));
+        let borrower = Some(("Borrower FC", 4000));
+        let other = Some(("Other FC", 5000));
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "after-departures.json",
+            Some("2028-09-02"),
+            vec![
+                club_youngster(71, "Stayed", 18),
+                at(club_youngster(72, "Loaned Out", 18), borrower, managed),
+                at(club_youngster(73, "Moved", 18), other, other),
+                at(club_youngster(74, "On Loan Elsewhere", 18), borrower, other),
+                at(club_youngster(75, "No Club", 18), None, None),
+            ],
+        );
+
+        let sold_to_other = Some((
+            "sold".to_string(),
+            Some("Other FC".to_string()),
+            None,
+            false,
+        ));
+        let released = Some(("released".to_string(), None, None, false));
+        assert_eq!(
+            outcomes(&conn),
+            BTreeMap::from([
+                (71, None),
+                (72, None),
+                (73, sold_to_other.clone()),
+                (74, sold_to_other.clone()),
+                (75, released.clone()),
+                (76, released),
+            ])
+        );
+
+        super::set_member_outcome(
+            &conn,
+            save_id,
+            class_id,
+            73,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "sold".to_string(),
+                buying_club: Some("Other FC".to_string()),
+                sale_fee_eur: Some(250_000),
+            }),
+        )
+        .expect("record the fee");
+        super::set_member_outcome(
+            &conn,
+            save_id,
+            class_id,
+            74,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "released".to_string(),
+                buying_club: None,
+                sale_fee_eur: None,
+            }),
+        )
+        .expect("record a release");
+        let recorded = outcomes(&conn);
+        assert_eq!(
+            recorded[&73],
+            Some((
+                "sold".to_string(),
+                Some("Other FC".to_string()),
+                Some(250_000),
+                true
+            ))
+        );
+        assert_eq!(
+            recorded[&74],
+            Some(("released".to_string(), None, None, true))
+        );
+
+        super::set_member_outcome(&conn, save_id, class_id, 73, None).expect("clear the record");
+        assert_eq!(outcomes(&conn)[&73], sold_to_other);
+    }
+
+    #[test]
+    fn a_save_without_a_snapshot_shows_no_observed_outcome() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("academy-no-snapshot.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let class_id = super::create_class(&conn, save_id, 2026)
+            .expect("create class")
+            .id;
+        insert_membership(&conn, save_id, class_id, 77);
+
+        let member = &super::get_class(&conn, save_id, class_id)
+            .expect("read class")
+            .members[0];
+
+        assert_eq!(member.state, super::AcademyMemberState::Unresolved);
+        assert_eq!(member.outcome, None);
+    }
+
+    #[test]
     fn records_replaces_and_clears_member_outcomes() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("academy-outcomes.db"));
@@ -1978,6 +2175,7 @@ mod tests {
                 status: super::AcademyMemberOutcomeStatus::Sold,
                 buying_club: Some("Rovers FC".to_string()),
                 sale_fee_eur: Some(1_250_000),
+                recorded: true,
             })
         );
 
@@ -2002,6 +2200,7 @@ mod tests {
                 status: super::AcademyMemberOutcomeStatus::Released,
                 buying_club: None,
                 sale_fee_eur: None,
+                recorded: true,
             })
         );
 
@@ -2126,6 +2325,7 @@ mod tests {
                 status: super::AcademyMemberOutcomeStatus::Sold,
                 buying_club: Some("Existing FC".to_string()),
                 sale_fee_eur: Some(250_000),
+                recorded: true,
             })
         );
     }
@@ -2253,6 +2453,7 @@ mod tests {
                 status: super::AcademyMemberOutcomeStatus::Sold,
                 buying_club: Some("Rovers FC".to_string()),
                 sale_fee_eur: Some(750_000),
+                recorded: true,
             })
         );
 
@@ -2280,6 +2481,7 @@ mod tests {
                 status: super::AcademyMemberOutcomeStatus::Sold,
                 buying_club: Some("Rovers FC".to_string()),
                 sale_fee_eur: Some(750_000),
+                recorded: true,
             })
         );
     }

@@ -47,11 +47,13 @@ describe("summarizeAcademyMembers", () => {
           status: "sold",
           buyingClub: "Rovers FC",
           saleFeeEur: 1_250_000,
+          recorded: true,
         }),
         academyMember({
           status: "released",
           buyingClub: null,
           saleFeeEur: null,
+          recorded: true,
         }),
         academyMember(null),
       ]),

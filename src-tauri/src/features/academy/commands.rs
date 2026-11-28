@@ -83,6 +83,7 @@ pub struct AcademyMemberOutcomeDto {
     pub status: String,
     pub buying_club: Option<String>,
     pub sale_fee_eur: Option<i64>,
+    pub recorded: bool,
 }
 
 impl From<AcademyMemberOutcome> for AcademyMemberOutcomeDto {
@@ -91,6 +92,7 @@ impl From<AcademyMemberOutcome> for AcademyMemberOutcomeDto {
             status: outcome.status.as_str().to_string(),
             buying_club: outcome.buying_club,
             sale_fee_eur: outcome.sale_fee_eur,
+            recorded: outcome.recorded,
         }
     }
 }
