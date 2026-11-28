@@ -158,11 +158,9 @@ export function AcademyClassWorkspace({
             >
               Add players
             </Button>
-            {!academyClass.isAutomatic ? (
-              <Button variant="ghost" icon={Trash2} onClick={onDelete}>
-                Delete class
-              </Button>
-            ) : null}
+            <Button variant="ghost" icon={Trash2} onClick={onDelete}>
+              Delete class
+            </Button>
           </div>
         }
       >
@@ -282,7 +280,7 @@ function AcademyRosterGroup({
         <div className="mt-2 max-h-[min(55vh,560px)] overflow-auto rounded-lg border border-outline-variant">
           <table
             aria-labelledby={headingId}
-            className="min-w-[1360px] w-full border-collapse text-left"
+            className="min-w-[1300px] w-full border-collapse text-left"
           >
             <caption className="sr-only">
               {title} players in Class of {academyClass.classYear}
@@ -325,7 +323,6 @@ function AcademyRosterTableHeader() {
           "Career apps",
           "Goals",
           "Assists",
-          "Caps",
           "Fee",
           "Actions",
         ].map((label) => (
@@ -342,7 +339,6 @@ function AcademyRosterTableHeader() {
                 "Career apps",
                 "Goals",
                 "Assists",
-                "Caps",
                 "Fee",
                 "Actions",
               ].includes(label)
@@ -374,12 +370,11 @@ function AcademyRosterRow({
   onRemove,
 }: AcademyRosterRowProps) {
   const name = member.currentName ?? member.lastKnownName;
+  // A member who left is grouped by his outcome; only one the snapshot lacks needs a note.
   const warning =
-    member.state === "departed"
-      ? "No longer at your managed club"
-      : member.state === "unresolved"
-        ? "Unavailable in the current snapshot"
-        : null;
+    member.state === "unresolved"
+      ? "Unavailable in the current snapshot"
+      : null;
   const positions = playableAcademyPositions(member.positions).join(", ");
   const rowTone =
     member.outcome?.status === "sold"
@@ -458,9 +453,6 @@ function AcademyRosterRow({
         {formatMissable(member.assists)}
       </td>
       <td className="px-2 text-right text-body-sm tabular-nums">
-        {formatMissable(member.internationalCaps)}
-      </td>
-      <td className="px-2 text-right text-body-sm tabular-nums">
         {member.outcome?.status === "sold" && member.outcome.saleFeeEur !== null
           ? formatMoney(member.outcome.saleFeeEur)
           : "—"}
@@ -516,6 +508,8 @@ function AcademyMemberActions({
   onRemove,
 }: AcademyMemberActionsProps) {
   const released = member.outcome?.status === "released";
+  // A release the snapshot shows was not recorded, so there is nothing to restore.
+  const observedRelease = released && !member.outcome?.recorded;
 
   return (
     <fieldset
@@ -538,21 +532,23 @@ function AcademyMemberActions({
       >
         Sell
       </Button>
-      <Button
-        disabled={disabled}
-        icon={released ? RotateCcw : UserRoundMinus}
-        variant="ghost"
-        className="px-3"
-        onClick={(event) =>
-          onOpenOutcome(
-            member,
-            released ? "clear" : "released",
-            event.currentTarget,
-          )
-        }
-      >
-        {released ? "Restore" : "Release"}
-      </Button>
+      {observedRelease ? null : (
+        <Button
+          disabled={disabled}
+          icon={released ? RotateCcw : UserRoundMinus}
+          variant="ghost"
+          className="px-3"
+          onClick={(event) =>
+            onOpenOutcome(
+              member,
+              released ? "clear" : "released",
+              event.currentTarget,
+            )
+          }
+        >
+          {released ? "Restore" : "Release"}
+        </Button>
+      )}
       <Button
         disabled={disabled}
         icon={Trash2}

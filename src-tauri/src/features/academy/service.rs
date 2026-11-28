@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
@@ -6,8 +6,12 @@ use serde_json::Value;
 use crate::features::managed_club::service::{
     managed_club_loaned_out_player_sql, managed_club_owned_player_sql,
 };
+use crate::features::memory_read::dump_validation::canonical_game_date;
 
-const BASELINE_CLASS_YEAR: i64 = 2025;
+/// FM gives the players it generates Unique IDs from here up; database players sit below.
+const FIRST_GENERATED_UID: i64 = 2_000_000_000;
+/// The oldest a generated player may be when first seen and still count as an intake player.
+const MAX_INTAKE_AGE: i64 = 17;
 const MAX_ACADEMY_CANDIDATES: usize = 100;
 const MAX_CANDIDATE_SEARCH_LEN: usize = 120;
 
@@ -15,7 +19,6 @@ const MAX_CANDIDATE_SEARCH_LEN: usize = 120;
 pub struct AcademyClass {
     pub id: i64,
     pub class_year: i64,
-    pub is_automatic: bool,
     pub member_count: i64,
 }
 
@@ -23,7 +26,6 @@ pub struct AcademyClass {
 pub struct AcademyClassDetail {
     pub id: i64,
     pub class_year: i64,
-    pub is_automatic: bool,
     pub members: Vec<AcademyMember>,
 }
 
@@ -72,7 +74,10 @@ impl AcademyMemberOutcomeStatus {
 pub struct AcademyMemberOutcome {
     pub status: AcademyMemberOutcomeStatus,
     pub buying_club: Option<String>,
+    /// Always known for a recorded sale, never for an observed one.
     pub sale_fee_eur: Option<i64>,
+    /// The user recorded it. Otherwise the current snapshot shows it.
+    pub recorded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,7 +106,6 @@ pub struct AcademyMember {
     pub reported_career_appearances: Option<i64>,
     pub goals: Option<i64>,
     pub assists: Option<i64>,
-    pub international_caps: Option<i64>,
     pub outcome: Option<AcademyMemberOutcome>,
     pub is_graduate: Option<bool>,
     /// The managed club has loaned the member out; the current club is the borrower.
@@ -124,11 +128,69 @@ struct CurrentAcademyPlayer {
     loaned_out: bool,
 }
 
-struct AcademyCareerStats {
-    reported_career_appearances: Option<i64>,
-    goals: Option<i64>,
-    assists: Option<i64>,
-    international_caps: Option<i64>,
+/// What the linked FM save held of a member's season on `as_of`, its in-game date.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SeasonReading {
+    as_of: String,
+    minutes: i64,
+    appearances: i64,
+    goals: i64,
+    assists: i64,
+}
+
+/// A member's competitive matches as the season statistics of the linked FM save have shown
+/// them: the seasons FM has closed, and the running one as last read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CareerStats {
+    closed_appearances: i64,
+    closed_goals: i64,
+    closed_assists: i64,
+    season: SeasonReading,
+}
+
+impl CareerStats {
+    fn starting_with(season: SeasonReading) -> Self {
+        Self {
+            closed_appearances: 0,
+            closed_goals: 0,
+            closed_assists: 0,
+            season,
+        }
+    }
+
+    // ponytail: FM has closed a season when a later read shows fewer minutes, and the season
+    // counts as it was last read. Totals are a lower bound, and a season first read after it
+    // has passed the previous one's last reading merges with it.
+    // Upgrade to the save's archived season history (fmsave `player_season_history`) if a
+    // member's totals fall more than a few matches a season short of FM's career history.
+    fn advance(self, reading: SeasonReading) -> Self {
+        // A read not dated after the last one comes from an earlier save of the same season,
+        // or from the same day played again.
+        if reading.as_of <= self.season.as_of || reading.minutes >= self.season.minutes {
+            return Self {
+                season: reading,
+                ..self
+            };
+        }
+        Self {
+            closed_appearances: self.closed_appearances + self.season.appearances,
+            closed_goals: self.closed_goals + self.season.goals,
+            closed_assists: self.closed_assists + self.season.assists,
+            season: reading,
+        }
+    }
+
+    fn appearances(&self) -> i64 {
+        self.closed_appearances + self.season.appearances
+    }
+
+    fn goals(&self) -> i64 {
+        self.closed_goals + self.season.goals
+    }
+
+    fn assists(&self) -> i64 {
+        self.closed_assists + self.season.assists
+    }
 }
 
 pub fn create_class(
@@ -162,52 +224,199 @@ pub fn create_class(
     Ok(AcademyClass {
         id: conn.last_insert_rowid(),
         class_year,
-        is_automatic: false,
         member_count: 0,
     })
 }
 
-pub fn ensure_baseline_class(conn: &Connection, save_id: i64) -> Result<(), String> {
-    ensure_automatic_class(conn, save_id, BASELINE_CLASS_YEAR)
+/// Who FM had already generated when a new snapshot arrives, and the class its intake joins.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct IntakeBaseline {
+    class_year: i64,
+    generated_uids: HashSet<i64>,
 }
 
-/// Whether `ensure_baseline_class` would leave the save unchanged.
-pub fn has_baseline_class(conn: &Connection, save_id: i64) -> Result<bool, String> {
-    conn.query_row(
-        "SELECT EXISTS(
-             SELECT 1
-             FROM academy_classes
-             WHERE save_id = ?1 AND class_year = ?2 AND is_automatic = 1
-         )",
-        params![save_id, BASELINE_CLASS_YEAR],
-        |row| row.get(0),
-    )
-    .map_err(|error| error.to_string())
-}
-
-pub fn ensure_class_for_game_date(
+/// The baseline for the intake of the snapshot `snapshot_id` dated `game_date`: the generated
+/// players of the save's latest other snapshot dated on or before it. Load Data reads it before
+/// it deletes that snapshot. `None` when the date is not trusted or the save has no earlier
+/// snapshot; no intake can be told then.
+pub(crate) fn intake_baseline(
     conn: &Connection,
     save_id: i64,
+    snapshot_id: i64,
     game_date: Option<&str>,
     game_date_source: &str,
-) -> Result<(), String> {
+) -> Result<Option<IntakeBaseline>, String> {
     let Some(class_year) = observed_class_year(game_date, game_date_source) else {
-        return Ok(());
+        return Ok(None);
     };
+    let earlier_snapshot_id: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM snapshots
+             WHERE save_id = ?1 AND id <> ?2 AND game_date IS NOT NULL AND game_date <= ?3
+             ORDER BY game_date DESC, loaded_at_utc DESC, id DESC
+             LIMIT 1",
+            params![save_id, snapshot_id, game_date],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some(earlier_snapshot_id) = earlier_snapshot_id else {
+        return Ok(None);
+    };
+    let generated_uids = conn
+        .prepare("SELECT uid FROM players WHERE snapshot_id = ?1 AND uid >= ?2")
+        .map_err(|error| error.to_string())?
+        .query_map(params![earlier_snapshot_id, FIRST_GENERATED_UID], |row| {
+            row.get(0)
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|error| error.to_string())?;
 
-    ensure_automatic_class(conn, save_id, class_year)
+    Ok(Some(IntakeBaseline {
+        class_year,
+        generated_uids,
+    }))
+}
+
+/// Adds the youth intake of the snapshot `snapshot_id` to the class of its year, creating the
+/// class when the intake is its first member. An intake player is a generated player the
+/// managed club owns who was not in the game at the baseline and is at most `MAX_INTAKE_AGE`.
+/// A player bought in existed before, so he is left out.
+///
+/// The year is the snapshot's, so an intake first loaded after the following New Year joins the
+/// later class.
+pub(crate) fn record_intake(
+    conn: &Connection,
+    save_id: i64,
+    snapshot_id: i64,
+    baseline: &IntakeBaseline,
+) -> Result<(), String> {
+    let intake = conn
+        .prepare(&format!(
+            "SELECT p.uid, p.name
+             FROM players p
+             WHERE p.uid >= ?3
+               AND p.age <= ?4
+               AND trim(p.name) <> ''
+               AND {}
+               AND NOT EXISTS(
+                   SELECT 1
+                   FROM academy_memberships membership
+                   WHERE membership.save_id = ?2
+                     AND membership.player_uid = p.uid
+               )",
+            managed_club_owned_player_sql("p", "?1", "?2")
+        ))
+        .map_err(|error| error.to_string())?
+        .query_map(
+            params![snapshot_id, save_id, FIRST_GENERATED_UID, MAX_INTAKE_AGE],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .map_err(|error| error.to_string())?
+        .filter(|player| {
+            player
+                .as_ref()
+                .map_or(true, |(uid, _)| !baseline.generated_uids.contains(uid))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if intake.is_empty() {
+        return Ok(());
+    }
+
+    conn.execute(
+        "INSERT INTO academy_classes (save_id, class_year) VALUES (?1, ?2)
+         ON CONFLICT(save_id, class_year) DO NOTHING",
+        params![save_id, baseline.class_year],
+    )
+    .map_err(|error| error.to_string())?;
+    let mut insert = conn
+        .prepare(
+            "INSERT INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
+             SELECT ?1, id, ?3, ?4
+             FROM academy_classes
+             WHERE save_id = ?1 AND class_year = ?2",
+        )
+        .map_err(|error| error.to_string())?;
+    for (player_uid, name) in intake {
+        insert
+            .execute(params![save_id, baseline.class_year, player_uid, name])
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+/// Carries every member's career forward to the season statistics just attached to the
+/// snapshot `snapshot_id`. A member without a stored career starts from the snapshots the save
+/// still holds.
+pub(crate) fn record_season_readings(
+    conn: &Connection,
+    save_id: i64,
+    snapshot_id: i64,
+) -> Result<(), String> {
+    let member_uids = conn
+        .prepare("SELECT player_uid FROM academy_memberships WHERE save_id = ?1")
+        .map_err(|error| error.to_string())?
+        .query_map([save_id], |row| row.get::<_, i64>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let mut upsert = conn
+        .prepare(
+            "INSERT INTO academy_member_career_stats (
+                save_id, player_uid, closed_appearances, closed_goals, closed_assists,
+                season_as_of, season_minutes, season_appearances, season_goals, season_assists
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(save_id, player_uid) DO UPDATE SET
+                closed_appearances = excluded.closed_appearances,
+                closed_goals = excluded.closed_goals,
+                closed_assists = excluded.closed_assists,
+                season_as_of = excluded.season_as_of,
+                season_minutes = excluded.season_minutes,
+                season_appearances = excluded.season_appearances,
+                season_goals = excluded.season_goals,
+                season_assists = excluded.season_assists",
+        )
+        .map_err(|error| error.to_string())?;
+    for player_uid in member_uids {
+        let career = match stored_career(conn, save_id, player_uid)? {
+            Some(career) => season_readings(conn, save_id, player_uid, Some(snapshot_id))?
+                .into_iter()
+                .fold(career, CareerStats::advance),
+            None => match retained_career(conn, save_id, player_uid)? {
+                Some(career) => career,
+                None => continue,
+            },
+        };
+        upsert
+            .execute(params![
+                save_id,
+                player_uid,
+                career.closed_appearances,
+                career.closed_goals,
+                career.closed_assists,
+                career.season.as_of,
+                career.season.minutes,
+                career.season.appearances,
+                career.season.goals,
+                career.season.assists,
+            ])
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 pub fn list_classes(conn: &Connection, save_id: i64) -> Result<Vec<AcademyClass>, String> {
     let mut statement = conn
         .prepare(
-            "SELECT class.id, class.class_year, class.is_automatic, COUNT(member.player_uid)
+            "SELECT class.id, class.class_year, COUNT(member.player_uid)
              FROM academy_classes class
              LEFT JOIN academy_memberships member
                ON member.save_id = class.save_id
               AND member.class_id = class.id
              WHERE class.save_id = ?1
-             GROUP BY class.id, class.class_year, class.is_automatic
+             GROUP BY class.id, class.class_year
              ORDER BY class.class_year ASC",
         )
         .map_err(|error| error.to_string())?;
@@ -217,8 +426,7 @@ pub fn list_classes(conn: &Connection, save_id: i64) -> Result<Vec<AcademyClass>
             Ok(AcademyClass {
                 id: row.get(0)?,
                 class_year: row.get(1)?,
-                is_automatic: row.get::<_, i32>(2)? == 1,
-                member_count: row.get(3)?,
+                member_count: row.get(2)?,
             })
         })
         .map_err(|error| error.to_string())?
@@ -236,22 +444,6 @@ pub fn delete_class(
 ) -> Result<(), String> {
     if !confirmed {
         return Err("Deleting an academy class requires confirmation".to_string());
-    }
-
-    let is_automatic: Option<bool> = conn
-        .query_row(
-            "SELECT is_automatic FROM academy_classes WHERE id = ?1 AND save_id = ?2",
-            params![class_id, save_id],
-            |row| Ok(row.get::<_, i32>(0)? == 1),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    match is_automatic {
-        Some(true) => {
-            return Err("Automatically managed academy classes cannot be deleted".to_string())
-        }
-        Some(false) => {}
-        None => return Err(format!("Academy class {class_id} not found")),
     }
 
     let deleted = conn
@@ -272,7 +464,7 @@ pub fn get_class(
     save_id: i64,
     class_id: i64,
 ) -> Result<AcademyClassDetail, String> {
-    let (class_year, is_automatic) = academy_class(conn, save_id, class_id)?;
+    let class_year = academy_class(conn, save_id, class_id)?;
     let snapshot_id = current_snapshot_id(conn, save_id)?;
     let mut statement = conn
         .prepare(
@@ -280,18 +472,11 @@ pub fn get_class(
                     membership.last_known_name,
                     outcome.status,
                     outcome.buying_club,
-                    outcome.sale_fee_eur,
-                    career.career_appearances,
-                    career.career_goals,
-                    career.career_assists,
-                    career.international_caps
+                    outcome.sale_fee_eur
              FROM academy_memberships membership
              LEFT JOIN academy_member_outcomes outcome
                ON outcome.save_id = membership.save_id
               AND outcome.player_uid = membership.player_uid
-             LEFT JOIN player_youth_career_stats career
-               ON career.save_id = membership.save_id
-              AND career.player_uid = membership.player_uid
              WHERE membership.save_id = ?1 AND membership.class_id = ?2
              ORDER BY membership.last_known_name COLLATE NOCASE, membership.player_uid",
         )
@@ -304,12 +489,6 @@ pub fn get_class(
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, Option<String>>(3)?,
                 row.get::<_, Option<i64>>(4)?,
-                AcademyCareerStats {
-                    reported_career_appearances: row.get(5)?,
-                    goals: row.get(6)?,
-                    assists: row.get(7)?,
-                    international_caps: row.get(8)?,
-                },
             ))
         })
         .map_err(|error| error.to_string())?
@@ -320,19 +499,29 @@ pub fn get_class(
     let members = memberships
         .into_iter()
         .map(
-            |(player_uid, last_known_name, status, buying_club, sale_fee_eur, career_stats)| {
+            |(player_uid, last_known_name, status, buying_club, sale_fee_eur)| {
                 let player = match snapshot_id {
                     Some(snapshot_id) => {
                         load_current_player(conn, save_id, snapshot_id, player_uid)?
                     }
                     None => None,
                 };
-                let outcome = stored_member_outcome(status, buying_club, sale_fee_eur)?;
+                // A member added since the last read of the linked save has no stored career.
+                let career = match stored_career(conn, save_id, player_uid)? {
+                    Some(career) => Some(career),
+                    None => retained_career(conn, save_id, player_uid)?,
+                };
+                // What the user recorded stands; otherwise the snapshot says what became of him.
+                let outcome = match stored_member_outcome(status, buying_club, sale_fee_eur)? {
+                    Some(recorded) => Some(recorded),
+                    None if snapshot_id.is_some() => observed_outcome(player.as_ref()),
+                    None => None,
+                };
                 Ok(academy_member(
                     player_uid,
                     last_known_name,
                     player,
-                    career_stats,
+                    career,
                     outcome,
                 ))
             },
@@ -342,7 +531,6 @@ pub fn get_class(
     Ok(AcademyClassDetail {
         id: class_id,
         class_year,
-        is_automatic,
         members,
     })
 }
@@ -548,57 +736,26 @@ pub fn set_member_outcome(
     tx.commit().map_err(|error| error.to_string())
 }
 
-fn academy_class(conn: &Connection, save_id: i64, class_id: i64) -> Result<(i64, bool), String> {
+/// The year of the class `class_id` of the save, or an error when the save has no such class.
+fn academy_class(conn: &Connection, save_id: i64, class_id: i64) -> Result<i64, String> {
     conn.query_row(
-        "SELECT class_year, is_automatic
+        "SELECT class_year
          FROM academy_classes
          WHERE id = ?1 AND save_id = ?2",
         params![class_id, save_id],
-        |row| Ok((row.get(0)?, row.get::<_, i32>(1)? == 1)),
+        |row| row.get(0),
     )
     .optional()
     .map_err(|error| error.to_string())?
     .ok_or_else(|| format!("Academy class {class_id} not found"))
 }
 
-fn ensure_automatic_class(conn: &Connection, save_id: i64, class_year: i64) -> Result<(), String> {
-    conn.execute(
-        "INSERT INTO academy_classes (save_id, class_year, is_automatic)
-         VALUES (?1, ?2, 1)
-         ON CONFLICT(save_id, class_year) DO UPDATE SET is_automatic = 1",
-        params![save_id, class_year],
-    )
-    .map_err(|error| error.to_string())?;
-
-    Ok(())
-}
-
+/// The year of a valid `yyyy-MM-dd` game date the bridge read or derived.
 fn observed_class_year(game_date: Option<&str>, game_date_source: &str) -> Option<i64> {
-    if !matches!(game_date_source, "memory" | "derived") {
-        return None;
-    }
-
-    let game_date = game_date?;
-    let bytes = game_date.as_bytes();
-    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
-        return None;
-    }
-
-    let year = game_date[0..4].parse::<i64>().ok()?;
-    let month = game_date[5..7].parse::<u8>().ok()?;
-    let day = game_date[8..10].parse::<u8>().ok()?;
-    let days_in_month = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
-        2 => 28,
-        _ => return None,
-    };
-    if !(1..=days_in_month).contains(&day) || year < BASELINE_CLASS_YEAR {
-        return None;
-    }
-
-    Some(year)
+    let game_date = game_date.filter(|date| {
+        matches!(game_date_source, "memory" | "derived") && canonical_game_date(date)
+    })?;
+    game_date[0..4].parse().ok()
 }
 
 fn current_snapshot_id(conn: &Connection, save_id: i64) -> Result<Option<i64>, String> {
@@ -615,9 +772,13 @@ fn academy_member(
     player_uid: i64,
     last_known_name: String,
     player: Option<CurrentAcademyPlayer>,
-    career_stats: AcademyCareerStats,
+    career: Option<CareerStats>,
     outcome: Option<AcademyMemberOutcome>,
 ) -> AcademyMember {
+    let reported_career_appearances = career.as_ref().map(CareerStats::appearances);
+    let goals = career.as_ref().map(CareerStats::goals);
+    let assists = career.as_ref().map(CareerStats::assists);
+    let is_graduate = reported_career_appearances.map(|appearances| appearances >= 1);
     let Some(player) = player else {
         return AcademyMember {
             player_uid,
@@ -634,14 +795,11 @@ fn academy_member(
             determination: None,
             height_cm: None,
             preferred_foot: None,
-            reported_career_appearances: career_stats.reported_career_appearances,
-            goals: career_stats.goals,
-            assists: career_stats.assists,
-            international_caps: career_stats.international_caps,
+            reported_career_appearances,
+            goals,
+            assists,
             outcome,
-            is_graduate: career_stats
-                .reported_career_appearances
-                .map(|appearances| appearances >= 1),
+            is_graduate,
             loaned_out: false,
         };
     };
@@ -666,16 +824,98 @@ fn academy_member(
         determination: player.determination,
         height_cm: player.height_cm,
         preferred_foot: Some(player.preferred_foot),
-        reported_career_appearances: career_stats.reported_career_appearances,
-        goals: career_stats.goals,
-        assists: career_stats.assists,
-        international_caps: career_stats.international_caps,
+        reported_career_appearances,
+        goals,
+        assists,
         outcome,
-        is_graduate: career_stats
-            .reported_career_appearances
-            .map(|appearances| appearances >= 1),
+        is_graduate,
         loaned_out: player.loaned_out,
     }
+}
+
+fn stored_career(
+    conn: &Connection,
+    save_id: i64,
+    player_uid: i64,
+) -> Result<Option<CareerStats>, String> {
+    conn.query_row(
+        "SELECT closed_appearances, closed_goals, closed_assists,
+                season_as_of, season_minutes, season_appearances, season_goals, season_assists
+         FROM academy_member_career_stats
+         WHERE save_id = ?1 AND player_uid = ?2",
+        params![save_id, player_uid],
+        |row| {
+            Ok(CareerStats {
+                closed_appearances: row.get(0)?,
+                closed_goals: row.get(1)?,
+                closed_assists: row.get(2)?,
+                season: SeasonReading {
+                    as_of: row.get(3)?,
+                    minutes: row.get(4)?,
+                    appearances: row.get(5)?,
+                    goals: row.get(6)?,
+                    assists: row.get(7)?,
+                },
+            })
+        },
+    )
+    .optional()
+    .map_err(|error| error.to_string())
+}
+
+/// The career the save's remaining snapshots show, or `None` when none of them has season
+/// statistics.
+fn retained_career(
+    conn: &Connection,
+    save_id: i64,
+    player_uid: i64,
+) -> Result<Option<CareerStats>, String> {
+    Ok(season_readings(conn, save_id, player_uid, None)?
+        .into_iter()
+        .fold(None, |career: Option<CareerStats>, reading| {
+            Some(match career {
+                Some(career) => career.advance(reading),
+                None => CareerStats::starting_with(reading),
+            })
+        }))
+}
+
+/// The player's season in each of the save's snapshots that has season statistics, or in
+/// `only_snapshot_id` alone, oldest first. Statistics that leave him out read as no match
+/// played.
+fn season_readings(
+    conn: &Connection,
+    save_id: i64,
+    player_uid: i64,
+    only_snapshot_id: Option<i64>,
+) -> Result<Vec<SeasonReading>, String> {
+    conn.prepare(
+        "SELECT snapshot.moneyball_stats_game_date,
+                COALESCE(stats.minutes, 0),
+                COALESCE(stats.starts, 0) + COALESCE(stats.substitute_appearances, 0),
+                COALESCE(stats.goals, 0),
+                COALESCE(stats.assists, 0)
+         FROM snapshots snapshot
+         LEFT JOIN player_moneyball_stats stats
+           ON stats.snapshot_id = snapshot.id AND stats.player_uid = ?2
+         WHERE snapshot.save_id = ?1
+           AND snapshot.moneyball_stats_game_date IS NOT NULL
+           AND (?3 IS NULL OR snapshot.id = ?3)
+         ORDER BY snapshot.moneyball_stats_game_date, snapshot.id",
+    )
+    .map_err(|error| error.to_string())?
+    .query_map(params![save_id, player_uid, only_snapshot_id], |row| {
+        Ok(SeasonReading {
+            as_of: row.get(0)?,
+            minutes: row.get(1)?,
+            appearances: row.get(2)?,
+            goals: row.get(3)?,
+            assists: row.get(4)?,
+        })
+    })
+    .map_err(|error| error.to_string())?
+    .collect::<Result<_, _>>()
+    .map_err(|error| error.to_string())
 }
 
 fn validate_member_outcome(
@@ -696,6 +936,7 @@ fn validate_member_outcome(
                 status: AcademyMemberOutcomeStatus::Sold,
                 buying_club: Some(buying_club),
                 sale_fee_eur: Some(sale_fee_eur),
+                recorded: true,
             })
         }
         "released" => {
@@ -706,10 +947,32 @@ fn validate_member_outcome(
                 status: AcademyMemberOutcomeStatus::Released,
                 buying_club: None,
                 sale_fee_eur: None,
+                recorded: true,
             })
         }
         _ => Err(format!("Unknown academy outcome status `{}`", input.status)),
     }
+}
+
+/// What the current snapshot shows became of a member with no recorded outcome: sold to the
+/// club that owns him now, or released when no club does or the game no longer holds him.
+/// `None` while the managed club owns him. The fee of an observed sale is not known.
+fn observed_outcome(player: Option<&CurrentAcademyPlayer>) -> Option<AcademyMemberOutcome> {
+    if player.is_some_and(|player| player.in_managed_club) {
+        return None;
+    }
+    // A player on loan is owned by his parent club, not the club he plays at.
+    let owner =
+        player.and_then(|player| player.parent_club.as_ref().or(player.current_club.as_ref()));
+    Some(AcademyMemberOutcome {
+        status: match owner {
+            Some(_) => AcademyMemberOutcomeStatus::Sold,
+            None => AcademyMemberOutcomeStatus::Released,
+        },
+        buying_club: owner.cloned(),
+        sale_fee_eur: None,
+        recorded: false,
+    })
 }
 
 fn stored_member_outcome(
@@ -906,7 +1169,6 @@ mod tests {
     use crate::db::migrations;
     use crate::features::managed_club::service as managed_club_service;
     use crate::features::snapshot::ingest;
-    use crate::features::snapshot::service as snapshot_service;
 
     fn open_migrated(path: &Path) -> Connection {
         let conn = Connection::open(path).expect("open db");
@@ -955,26 +1217,55 @@ mod tests {
         ingest::ingest_dump_file_for_save(conn, save_id, &dump_path).expect("ingest dump");
     }
 
-    fn ingest_with_game_date(
+    /// Loads `players` as a snapshot dated `game_date`, or with no known date for `None`.
+    fn ingest_dated(
         temp_dir: &tempfile::TempDir,
         conn: &mut Connection,
         save_id: i64,
         filename: &str,
-        game_date: Value,
-        game_date_source: &str,
-    ) -> Result<(), String> {
+        game_date: Option<&str>,
+        players: Vec<Value>,
+    ) {
         let mut dump: Value =
             serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v11.json"))
                 .expect("parse fixture");
-        dump["gameDate"] = game_date;
-        dump["gameDateSource"] = json!(game_date_source);
+        dump["gameDate"] = json!(game_date);
+        dump["gameDateSource"] = json!(if game_date.is_some() {
+            "derived"
+        } else {
+            "unknown"
+        });
+        dump["playerCount"] = json!(players.len());
+        dump["players"] = Value::Array(players);
         let dump_path = temp_dir.path().join(filename);
         fs::write(
             &dump_path,
             serde_json::to_string(&dump).expect("serialize dump"),
         )
         .expect("write dump");
-        ingest::ingest_dump_file_for_save(conn, save_id, &dump_path).map(|_| ())
+        ingest::ingest_dump_file_for_save(conn, save_id, &dump_path).expect("ingest dump");
+    }
+
+    /// FM's first Unique ID for a player it generates.
+    const FIRST_GENERATED: i64 = super::FIRST_GENERATED_UID;
+
+    /// A youth player aged `age` whom Loan FC, the club the tests manage, owns and has at home.
+    fn club_youngster(uid: i64, name: &str, age: i64) -> Value {
+        let mut player = fixture_player(uid, name, "Loan FC", "youth");
+        player["age"] = json!(age);
+        player["onLoan"] = json!(false);
+        player["parentClub"] = json!("Loan FC");
+        player["parentClubUid"] = json!(1000);
+        player
+    }
+
+    fn member_names(conn: &Connection, save_id: i64, class_id: i64) -> Vec<String> {
+        super::get_class(conn, save_id, class_id)
+            .expect("read class")
+            .members
+            .into_iter()
+            .map(|member| member.last_known_name)
+            .collect()
     }
 
     #[test]
@@ -1003,34 +1294,80 @@ mod tests {
         .expect("insert academy membership");
     }
 
-    fn insert_youth_career_stats(
+    /// Stores `player_uid`'s season in the snapshot as a read of the linked save on `as_of`
+    /// leaves it: `[minutes, starts, substitute appearances, goals, assists]`, and no row for a
+    /// player without a minute.
+    fn seed_season(
         conn: &Connection,
-        save_id: i64,
+        snapshot_id: i64,
+        as_of: &str,
         player_uid: i64,
-        career_appearances: i64,
-        international_caps: i64,
-        career_goals: i64,
-        career_assists: i64,
+        season: [i64; 5],
     ) {
         conn.execute(
-            "INSERT INTO player_youth_career_stats (
-                save_id,
-                player_uid,
-                career_appearances,
-                international_caps,
-                career_goals,
-                career_assists
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                save_id,
-                player_uid,
-                career_appearances,
-                international_caps,
-                career_goals,
-                career_assists,
-            ],
+            "DELETE FROM player_moneyball_stats WHERE snapshot_id = ?1 AND player_uid = ?2",
+            params![snapshot_id, player_uid],
         )
-        .expect("insert youth career stats");
+        .expect("clear season");
+        if season[0] > 0 {
+            conn.execute(
+                "INSERT INTO player_moneyball_stats (
+                    snapshot_id, player_uid, minutes, starts, substitute_appearances, goals, assists
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    snapshot_id,
+                    player_uid,
+                    season[0],
+                    season[1],
+                    season[2],
+                    season[3],
+                    season[4]
+                ],
+            )
+            .expect("insert season");
+        }
+        conn.execute(
+            "UPDATE snapshots SET moneyball_stats_game_date = ?1 WHERE id = ?2",
+            params![as_of, snapshot_id],
+        )
+        .expect("set as-of date");
+    }
+
+    /// A read of the linked save on `as_of`: the season lands on the current snapshot and
+    /// every member's career is carried forward.
+    fn read_season(
+        conn: &Connection,
+        save_id: i64,
+        as_of: &str,
+        player_uid: i64,
+        season: [i64; 5],
+    ) {
+        let snapshot_id = super::current_snapshot_id(conn, save_id)
+            .expect("read current snapshot")
+            .expect("current snapshot");
+        seed_season(conn, snapshot_id, as_of, player_uid, season);
+        super::record_season_readings(conn, save_id, snapshot_id).expect("record season readings");
+    }
+
+    /// The member's appearances, goals, assists, and graduate status.
+    fn career(
+        conn: &Connection,
+        save_id: i64,
+        class_id: i64,
+        player_uid: i64,
+    ) -> (Option<i64>, Option<i64>, Option<i64>, Option<bool>) {
+        let member = super::get_class(conn, save_id, class_id)
+            .expect("read class")
+            .members
+            .into_iter()
+            .find(|member| member.player_uid == player_uid)
+            .expect("member");
+        (
+            member.reported_career_appearances,
+            member.goals,
+            member.assists,
+            member.is_graduate,
+        )
     }
 
     #[test]
@@ -1086,181 +1423,218 @@ mod tests {
     }
 
     #[test]
-    fn generates_automatic_classes_without_replacing_matching_manual_memberships() {
+    fn a_load_adds_the_managed_clubs_new_generated_youngsters_to_the_class_of_its_year() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("academy-automatic-classes.db"));
-        let save = snapshot_service::create_save(&conn, "Academy save").expect("create save");
-        let default_save = snapshot_service::list_saves(&conn)
-            .expect("list saves")
-            .into_iter()
-            .find(|candidate| candidate.is_active)
-            .expect("default save");
-
+        let mut conn = open_migrated(&temp_dir.path().join("academy-intake.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "before-intake.json",
+            Some("2027-01-23"),
+            vec![club_youngster(FIRST_GENERATED + 1, "Earlier Intake", 16)],
+        );
+        configure_managed_club(&conn, save_id);
         assert_eq!(
-            super::list_classes(&conn, save.id)
-                .expect("list baseline classes")
-                .into_iter()
-                .map(|academy_class| academy_class.class_year)
-                .collect::<Vec<_>>(),
-            vec![2025]
+            super::list_classes(&conn, save_id),
+            Ok(vec![]),
+            "the first load has no earlier snapshot to compare with"
         );
 
-        let manual = super::create_class(&conn, save.id, 2026).expect("create manual class");
-        conn.execute(
-            "INSERT INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
-             VALUES (?1, ?2, 77, 'Manual class player')",
-            params![save.id, manual.id],
-        )
-        .expect("assign manual class player");
-
-        ingest_players(
+        let mut loaned_out = club_youngster(FIRST_GENERATED + 11, "Loaned Out", 16);
+        loaned_out["currentClub"] = json!("Borrower FC");
+        loaned_out["currentClubUid"] = json!(4000);
+        loaned_out["onLoan"] = json!(true);
+        let mut other_club = club_youngster(FIRST_GENERATED + 13, "Other Club", 15);
+        for (key, value) in [("currentClub", "Other FC"), ("parentClub", "Other FC")] {
+            other_club[key] = json!(value);
+        }
+        for key in ["currentClubUid", "parentClubUid"] {
+            other_club[key] = json!(5000);
+        }
+        let mut namesake_club = club_youngster(FIRST_GENERATED + 14, "Namesake Club", 15);
+        for key in ["currentClubUid", "parentClubUid"] {
+            namesake_club[key] = json!(9999);
+        }
+        ingest_dated(
             &temp_dir,
             &mut conn,
-            save.id,
-            "automatic-2026.json",
-            vec![fixture_player(78, "Academy prospect", "Loan FC", "youth")],
-        );
-        ingest_players(
-            &temp_dir,
-            &mut conn,
-            save.id,
-            "automatic-2026-retry.json",
-            vec![fixture_player(79, "Academy retry", "Loan FC", "youth")],
+            save_id,
+            "after-intake.json",
+            Some("2027-05-22"),
+            vec![
+                club_youngster(FIRST_GENERATED + 1, "Earlier Intake", 16),
+                club_youngster(FIRST_GENERATED + 10, "New Intake", 15),
+                loaned_out,
+                club_youngster(FIRST_GENERATED + 12, "Too Old", 18),
+                club_youngster(90, "Database Player", 16),
+                other_club,
+                namesake_club,
+            ],
         );
 
-        let classes = super::list_classes(&conn, save.id).expect("list automatic classes");
+        let classes = super::list_classes(&conn, save_id).expect("list classes");
         assert_eq!(
             classes
                 .iter()
-                .map(|academy_class| academy_class.class_year)
+                .map(|academy_class| (academy_class.class_year, academy_class.member_count))
                 .collect::<Vec<_>>(),
-            vec![2025, 2026]
+            [(2027, 2)]
         );
-        let matching_class = classes
-            .iter()
-            .find(|academy_class| academy_class.class_year == 2026)
-            .expect("matching 2026 class");
-        assert_eq!(matching_class.id, manual.id);
-        assert!(matching_class.is_automatic);
-        assert_eq!(matching_class.member_count, 1);
-        let is_automatic: i32 = conn
-            .query_row(
-                "SELECT is_automatic FROM academy_classes WHERE id = ?1",
-                [manual.id],
-                |row| row.get(0),
-            )
-            .expect("read matching class marker");
-        assert_eq!(is_automatic, 1);
         assert_eq!(
-            super::list_classes(&conn, default_save.id)
-                .expect("list default-save classes")
-                .into_iter()
-                .map(|academy_class| academy_class.class_year)
-                .collect::<Vec<_>>(),
-            vec![2025]
+            member_names(&conn, save_id, classes[0].id),
+            ["Loaned Out", "New Intake"]
         );
     }
 
     #[test]
-    fn derived_game_date_creates_the_same_observed_year_class_at_a_year_boundary() {
+    fn a_later_load_adds_neither_a_member_nor_a_removed_player_again() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("academy-derived-date.db"));
-        let save = snapshot_service::create_save(&conn, "Academy save").expect("create save");
-
-        ingest_with_game_date(
+        let mut conn = open_migrated(&temp_dir.path().join("academy-intake-repeat.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let anchor = || fixture_player(77, "Senior Player", "Loan FC", "senior");
+        let removed = || club_youngster(FIRST_GENERATED + 10, "Removed Later", 15);
+        let placed = || club_youngster(FIRST_GENERATED + 11, "Placed By Hand", 16);
+        ingest_dated(
             &temp_dir,
             &mut conn,
-            save.id,
-            "derived-date.json",
-            json!("2026-01-01"),
-            "derived",
-        )
-        .expect("ingest derived date");
-
-        assert_eq!(
-            super::list_classes(&conn, save.id)
-                .expect("list classes")
-                .into_iter()
-                .map(|academy_class| academy_class.class_year)
-                .collect::<Vec<_>>(),
-            vec![2025, 2026]
+            save_id,
+            "before-intake.json",
+            Some("2027-01-23"),
+            vec![anchor()],
         );
-    }
+        configure_managed_club(&conn, save_id);
+        let manual = super::create_class(&conn, save_id, 2020).expect("create manual class");
+        insert_membership(&conn, save_id, manual.id, FIRST_GENERATED + 11);
 
-    #[test]
-    fn automatic_classes_reject_deletion_while_manual_classes_remain_deletable() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let conn = open_migrated(&temp_dir.path().join("academy-automatic-delete.db"));
-        let save = snapshot_service::create_save(&conn, "Academy save").expect("create save");
-        let baseline = super::list_classes(&conn, save.id)
-            .expect("list baseline")
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "intake.json",
+            Some("2027-05-22"),
+            vec![anchor(), removed(), placed()],
+        );
+        let intake_class = super::list_classes(&conn, save_id)
+            .expect("list classes")
             .into_iter()
-            .find(|academy_class| academy_class.class_year == 2025)
-            .expect("baseline class");
-
-        let automatic_error = super::delete_class(&conn, save.id, baseline.id, true)
-            .expect_err("reject automatic class deletion");
+            .find(|academy_class| academy_class.class_year == 2027)
+            .expect("intake class");
         assert_eq!(
-            automatic_error,
-            "Automatically managed academy classes cannot be deleted"
+            member_names(&conn, save_id, intake_class.id),
+            ["Removed Later"]
+        );
+        assert_eq!(member_names(&conn, save_id, manual.id), ["Academy Player"]);
+
+        super::remove_member(&conn, save_id, intake_class.id, FIRST_GENERATED + 10)
+            .expect("remove intake player");
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "later.json",
+            Some("2027-09-04"),
+            vec![
+                anchor(),
+                removed(),
+                placed(),
+                club_youngster(FIRST_GENERATED + 20, "Late Arrival", 15),
+            ],
         );
 
-        let custom = super::create_class(&conn, save.id, 2027).expect("create custom class");
-        super::delete_class(&conn, save.id, custom.id, true).expect("delete custom class");
+        assert_eq!(
+            member_names(&conn, save_id, intake_class.id),
+            ["Late Arrival"]
+        );
+        assert_eq!(member_names(&conn, save_id, manual.id), ["Academy Player"]);
     }
 
     #[test]
-    fn unknown_early_invalid_and_failed_snapshots_do_not_create_observed_classes() {
+    fn no_intake_is_recorded_without_a_managed_club_or_a_trusted_date() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("academy-unavailable-date.db"));
-        let save = snapshot_service::create_save(&conn, "Academy save").expect("create save");
-
-        ingest_with_game_date(
+        let mut conn = open_migrated(&temp_dir.path().join("academy-intake-unknown.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let anchor = || fixture_player(77, "Senior Player", "Loan FC", "senior");
+        ingest_dated(
             &temp_dir,
             &mut conn,
-            save.id,
-            "unknown-date.json",
-            Value::Null,
-            "unknown",
-        )
-        .expect("ingest unknown date");
-        let malformed = ingest_with_game_date(
-            &temp_dir,
-            &mut conn,
-            save.id,
-            "malformed-date.json",
-            json!("not-a-date"),
-            "memory",
+            save_id,
+            "first.json",
+            Some("2027-01-23"),
+            vec![anchor()],
         );
-        assert!(malformed.is_err());
-        ingest_with_game_date(
+        ingest_dated(
             &temp_dir,
             &mut conn,
-            save.id,
-            "early-date.json",
-            json!("2024-12-31"),
-            "memory",
-        )
-        .expect("ingest early date");
-        let failed_json = include_str!("../memory_read/fixtures/golden_dump_v11.json")
-            .replace("\"schemaVersion\": 11", "\"schemaVersion\": 4")
-            .replace(
-                "\"gameDate\": \"2026-08-14\"",
-                "\"gameDate\": \"2027-01-01\"",
-            );
-        let failed_path = temp_dir.path().join("failed-date.json");
-        fs::write(&failed_path, failed_json).expect("write failed dump");
-        let failed = ingest::ingest_dump_file_for_save(&mut conn, save.id, &failed_path);
-
-        assert!(failed.is_err());
-        assert_eq!(
-            super::list_classes(&conn, save.id)
-                .expect("list classes after unavailable dates")
-                .into_iter()
-                .map(|academy_class| academy_class.class_year)
-                .collect::<Vec<_>>(),
-            vec![2025]
+            save_id,
+            "no-club.json",
+            Some("2027-05-22"),
+            vec![
+                anchor(),
+                club_youngster(FIRST_GENERATED + 10, "No Managed Club", 15),
+            ],
         );
+        configure_managed_club(&conn, save_id);
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "no-date.json",
+            None,
+            vec![
+                anchor(),
+                club_youngster(FIRST_GENERATED + 10, "No Managed Club", 15),
+                club_youngster(FIRST_GENERATED + 11, "No Game Date", 15),
+            ],
+        );
+
+        assert_eq!(super::list_classes(&conn, save_id), Ok(vec![]));
+    }
+
+    #[test]
+    fn a_load_dated_before_the_current_snapshot_records_no_intake() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-intake-earlier.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let anchor = || fixture_player(77, "Senior Player", "Loan FC", "senior");
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "first.json",
+            Some("2027-01-23"),
+            vec![anchor()],
+        );
+        configure_managed_club(&conn, save_id);
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "current.json",
+            Some("2027-05-22"),
+            vec![anchor()],
+        );
+        conn.execute(
+            "UPDATE snapshots SET is_kept = 1 WHERE save_id = ?1",
+            [save_id],
+        )
+        .expect("keep the current snapshot");
+
+        // Another timeline of the same save: its intake is not in the current snapshot.
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "earlier.json",
+            Some("2027-03-01"),
+            vec![
+                anchor(),
+                club_youngster(FIRST_GENERATED + 10, "Other Timeline", 15),
+            ],
+        );
+
+        assert_eq!(super::list_classes(&conn, save_id), Ok(vec![]));
     }
 
     #[test]
@@ -1396,7 +1770,6 @@ mod tests {
         assert_eq!(member.reported_career_appearances, None);
         assert_eq!(member.goals, None);
         assert_eq!(member.assists, None);
-        assert_eq!(member.international_caps, None);
         assert_eq!(member.outcome, None);
         assert_eq!(member.is_graduate, None);
         assert!(super::list_candidates(&conn, save_id, "")
@@ -1470,57 +1843,61 @@ mod tests {
     }
 
     #[test]
-    fn members_keep_save_scoped_youth_career_stats_after_snapshot_replacement() {
+    fn a_career_adds_the_seasons_fm_closed_to_the_running_one() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("academy-career-stats.db"));
-        let first_save_id = insert_save(&conn, "First academy save");
-        let second_save_id = insert_save(&conn, "Second academy save");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-career.db"));
+        let save_id = insert_save(&conn, "Academy save");
         ingest_players(
             &temp_dir,
             &mut conn,
-            first_save_id,
-            "academy-career-stats-first.json",
-            vec![
-                fixture_player(77, "Golden Fixture Player", "Loan FC", "senior"),
-                fixture_player(78, "Attached Player", "Loan B FC", "senior"),
-            ],
+            save_id,
+            "academy-career.json",
+            vec![fixture_player(77, "Academy Graduate", "Loan FC", "senior")],
         );
-        configure_managed_club(&conn, first_save_id);
-        let first_class =
-            super::create_class(&conn, first_save_id, 2030).expect("create first academy class");
-        super::assign_member(&conn, first_save_id, first_class.id, 77)
-            .expect("assign first academy member");
-        let second_class =
-            super::create_class(&conn, second_save_id, 2030).expect("create second academy class");
-        insert_membership(&conn, second_save_id, second_class.id, 77);
-        insert_youth_career_stats(&conn, first_save_id, 77, 4, 3, 2, 1);
-        insert_youth_career_stats(&conn, second_save_id, 77, 0, 98, 97, 96);
+        configure_managed_club(&conn, save_id);
+        let class_id = super::create_class(&conn, save_id, 2030)
+            .expect("create class")
+            .id;
+        super::assign_member(&conn, save_id, class_id, 77).expect("assign member");
+        let career = |conn: &Connection| career(conn, save_id, class_id, 77);
+        assert_eq!(
+            career(&conn),
+            (None, None, None, None),
+            "nothing is known before the linked save is read"
+        );
 
-        let first_member = &super::get_class(&conn, first_save_id, first_class.id)
-            .expect("load first academy class")
-            .members[0];
-        assert_eq!(first_member.state, super::AcademyMemberState::Resolved);
-        assert_eq!(first_member.reported_career_appearances, Some(4));
-        assert_eq!(first_member.goals, Some(2));
-        assert_eq!(first_member.assists, Some(1));
-        assert_eq!(first_member.international_caps, Some(3));
-        assert_eq!(first_member.is_graduate, Some(true));
+        read_season(&conn, save_id, "2027-03-01", 77, [900, 8, 2, 3, 1]);
+        assert_eq!(career(&conn), (Some(10), Some(3), Some(1), Some(true)));
+        read_season(&conn, save_id, "2027-05-20", 77, [1800, 18, 4, 6, 2]);
+        assert_eq!(
+            career(&conn),
+            (Some(22), Some(6), Some(2), Some(true)),
+            "a later read of the same season replaces the earlier one"
+        );
 
-        let second_member = &super::get_class(&conn, second_save_id, second_class.id)
-            .expect("load second academy class")
-            .members[0];
-        assert_eq!(second_member.state, super::AcademyMemberState::Unresolved);
-        assert_eq!(second_member.reported_career_appearances, Some(0));
-        assert_eq!(second_member.goals, Some(97));
-        assert_eq!(second_member.assists, Some(96));
-        assert_eq!(second_member.international_caps, Some(98));
-        assert_eq!(second_member.is_graduate, Some(false));
+        read_season(&conn, save_id, "2027-07-05", 77, [0; 5]);
+        assert_eq!(career(&conn), (Some(22), Some(6), Some(2), Some(true)));
+        read_season(&conn, save_id, "2027-09-01", 77, [270, 3, 0, 1, 0]);
+        assert_eq!(career(&conn), (Some(25), Some(7), Some(2), Some(true)));
+
+        read_season(&conn, save_id, "2027-08-20", 77, [180, 2, 0, 1, 0]);
+        assert_eq!(
+            career(&conn),
+            (Some(24), Some(7), Some(2), Some(true)),
+            "an earlier save of the same season closes nothing"
+        );
+        read_season(&conn, save_id, "2027-08-20", 77, [90, 1, 0, 0, 0]);
+        assert_eq!(
+            career(&conn),
+            (Some(23), Some(6), Some(2), Some(true)),
+            "the same day played again closes nothing"
+        );
 
         ingest_players(
             &temp_dir,
             &mut conn,
-            first_save_id,
-            "academy-career-stats-replaced.json",
+            save_id,
+            "academy-career-left.json",
             vec![fixture_player(
                 78,
                 "Replacement Player",
@@ -1528,18 +1905,244 @@ mod tests {
                 "senior",
             )],
         );
-        let unresolved_member = &super::get_class(&conn, first_save_id, first_class.id)
-            .expect("load unresolved academy member")
-            .members[0];
         assert_eq!(
-            unresolved_member.state,
-            super::AcademyMemberState::Unresolved
+            career(&conn),
+            (Some(23), Some(6), Some(2), Some(true)),
+            "a member the snapshot no longer holds keeps his career"
         );
-        assert_eq!(unresolved_member.reported_career_appearances, Some(4));
-        assert_eq!(unresolved_member.goals, Some(2));
-        assert_eq!(unresolved_member.assists, Some(1));
-        assert_eq!(unresolved_member.international_caps, Some(3));
-        assert_eq!(unresolved_member.is_graduate, Some(true));
+    }
+
+    #[test]
+    fn a_member_without_a_stored_career_reads_it_from_the_snapshots_the_save_kept() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-career-kept.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let players = || {
+            vec![
+                fixture_player(77, "Played Before", "Loan FC", "senior"),
+                fixture_player(78, "Never Played", "Loan FC", "youth"),
+            ]
+        };
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "last-season.json",
+            Some("2027-05-22"),
+            players(),
+        );
+        configure_managed_club(&conn, save_id);
+        let last_season = super::current_snapshot_id(&conn, save_id)
+            .expect("read snapshot")
+            .expect("snapshot");
+        seed_season(&conn, last_season, "2027-05-22", 77, [1800, 20, 2, 5, 4]);
+        conn.execute(
+            "UPDATE snapshots SET is_kept = 1 WHERE id = ?1",
+            [last_season],
+        )
+        .expect("keep last season");
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "this-season.json",
+            Some("2027-09-04"),
+            players(),
+        );
+        let this_season = super::current_snapshot_id(&conn, save_id)
+            .expect("read snapshot")
+            .expect("snapshot");
+        seed_season(&conn, this_season, "2027-09-04", 77, [270, 3, 0, 1, 0]);
+
+        let class_id = super::create_class(&conn, save_id, 2025)
+            .expect("create class")
+            .id;
+        super::assign_member(&conn, save_id, class_id, 77).expect("assign member");
+        super::assign_member(&conn, save_id, class_id, 78).expect("assign member");
+        let careers = |conn: &Connection| {
+            (
+                career(conn, save_id, class_id, 77),
+                career(conn, save_id, class_id, 78),
+            )
+        };
+        let expected = (
+            (Some(25), Some(6), Some(4), Some(true)),
+            (Some(0), Some(0), Some(0), Some(false)),
+        );
+        assert_eq!(careers(&conn), expected);
+
+        // The next read stores the same careers, and reading again adds nothing.
+        for _ in 0..2 {
+            super::record_season_readings(&conn, save_id, this_season).expect("record readings");
+            assert_eq!(careers(&conn), expected);
+        }
+        let stored: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM academy_member_career_stats WHERE save_id = ?1",
+                [save_id],
+                |row| row.get(0),
+            )
+            .expect("count stored careers");
+        assert_eq!(stored, 2);
+    }
+
+    #[test]
+    fn a_member_who_left_shows_what_the_snapshot_says_until_an_outcome_is_recorded() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-departures.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let names = [
+            (71, "Stayed"),
+            (72, "Loaned Out"),
+            (73, "Moved"),
+            (74, "On Loan Elsewhere"),
+            (75, "No Club"),
+            (76, "Gone From Game"),
+        ];
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "all-at-club.json",
+            Some("2027-05-22"),
+            names
+                .iter()
+                .map(|(uid, name)| club_youngster(*uid, name, 17))
+                .collect(),
+        );
+        configure_managed_club(&conn, save_id);
+        let class_id = super::create_class(&conn, save_id, 2026)
+            .expect("create class")
+            .id;
+        for (uid, _) in names {
+            super::assign_member(&conn, save_id, class_id, uid).expect("assign member");
+        }
+        /// (status, buying club, sale fee, recorded), or `None` for no outcome.
+        type Outcome = Option<(String, Option<String>, Option<i64>, bool)>;
+        let outcomes = |conn: &Connection| -> BTreeMap<i64, Outcome> {
+            super::get_class(conn, save_id, class_id)
+                .expect("read class")
+                .members
+                .into_iter()
+                .map(|member| {
+                    let outcome = member.outcome.map(|outcome| {
+                        (
+                            outcome.status.as_str().to_string(),
+                            outcome.buying_club,
+                            outcome.sale_fee_eur,
+                            outcome.recorded,
+                        )
+                    });
+                    (member.player_uid, outcome)
+                })
+                .collect()
+        };
+        assert!(outcomes(&conn).values().all(Option::is_none));
+
+        let at = |mut player: Value, club: Option<(&str, i64)>, owner: Option<(&str, i64)>| {
+            player["currentClub"] = json!(club.map(|(name, _)| name));
+            player["currentClubUid"] = json!(club.map(|(_, uid)| uid));
+            player["parentClub"] = json!(owner.map(|(name, _)| name));
+            player["parentClubUid"] = json!(owner.map(|(_, uid)| uid));
+            player["onLoan"] = json!(club != owner);
+            player
+        };
+        let managed = Some(("Loan FC", 1000));
+        let borrower = Some(("Borrower FC", 4000));
+        let other = Some(("Other FC", 5000));
+        ingest_dated(
+            &temp_dir,
+            &mut conn,
+            save_id,
+            "after-departures.json",
+            Some("2028-09-02"),
+            vec![
+                club_youngster(71, "Stayed", 18),
+                at(club_youngster(72, "Loaned Out", 18), borrower, managed),
+                at(club_youngster(73, "Moved", 18), other, other),
+                at(club_youngster(74, "On Loan Elsewhere", 18), borrower, other),
+                at(club_youngster(75, "No Club", 18), None, None),
+            ],
+        );
+
+        let sold_to_other = Some((
+            "sold".to_string(),
+            Some("Other FC".to_string()),
+            None,
+            false,
+        ));
+        let released = Some(("released".to_string(), None, None, false));
+        assert_eq!(
+            outcomes(&conn),
+            BTreeMap::from([
+                (71, None),
+                (72, None),
+                (73, sold_to_other.clone()),
+                (74, sold_to_other.clone()),
+                (75, released.clone()),
+                (76, released),
+            ])
+        );
+
+        super::set_member_outcome(
+            &conn,
+            save_id,
+            class_id,
+            73,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "sold".to_string(),
+                buying_club: Some("Other FC".to_string()),
+                sale_fee_eur: Some(250_000),
+            }),
+        )
+        .expect("record the fee");
+        super::set_member_outcome(
+            &conn,
+            save_id,
+            class_id,
+            74,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "released".to_string(),
+                buying_club: None,
+                sale_fee_eur: None,
+            }),
+        )
+        .expect("record a release");
+        let recorded = outcomes(&conn);
+        assert_eq!(
+            recorded[&73],
+            Some((
+                "sold".to_string(),
+                Some("Other FC".to_string()),
+                Some(250_000),
+                true
+            ))
+        );
+        assert_eq!(
+            recorded[&74],
+            Some(("released".to_string(), None, None, true))
+        );
+
+        super::set_member_outcome(&conn, save_id, class_id, 73, None).expect("clear the record");
+        assert_eq!(outcomes(&conn)[&73], sold_to_other);
+    }
+
+    #[test]
+    fn a_save_without_a_snapshot_shows_no_observed_outcome() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("academy-no-snapshot.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let class_id = super::create_class(&conn, save_id, 2026)
+            .expect("create class")
+            .id;
+        insert_membership(&conn, save_id, class_id, 77);
+
+        let member = &super::get_class(&conn, save_id, class_id)
+            .expect("read class")
+            .members[0];
+
+        assert_eq!(member.state, super::AcademyMemberState::Unresolved);
+        assert_eq!(member.outcome, None);
     }
 
     #[test]
@@ -1572,6 +2175,7 @@ mod tests {
                 status: super::AcademyMemberOutcomeStatus::Sold,
                 buying_club: Some("Rovers FC".to_string()),
                 sale_fee_eur: Some(1_250_000),
+                recorded: true,
             })
         );
 
@@ -1596,6 +2200,7 @@ mod tests {
                 status: super::AcademyMemberOutcomeStatus::Released,
                 buying_club: None,
                 sale_fee_eur: None,
+                recorded: true,
             })
         );
 
@@ -1720,6 +2325,7 @@ mod tests {
                 status: super::AcademyMemberOutcomeStatus::Sold,
                 buying_club: Some("Existing FC".to_string()),
                 sale_fee_eur: Some(250_000),
+                recorded: true,
             })
         );
     }
@@ -1847,6 +2453,7 @@ mod tests {
                 status: super::AcademyMemberOutcomeStatus::Sold,
                 buying_club: Some("Rovers FC".to_string()),
                 sale_fee_eur: Some(750_000),
+                recorded: true,
             })
         );
 
@@ -1874,6 +2481,7 @@ mod tests {
                 status: super::AcademyMemberOutcomeStatus::Sold,
                 buying_club: Some("Rovers FC".to_string()),
                 sale_fee_eur: Some(750_000),
+                recorded: true,
             })
         );
     }

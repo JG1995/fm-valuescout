@@ -428,7 +428,7 @@ test.describe("application smoke", () => {
       await expect(
         outcomes.getByText("Graduates", { exact: true }),
       ).toHaveAccessibleDescription(
-        "Career appearances have not been imported for every tracked player.",
+        "Needs season stats from your linked FM save.",
       );
       await expect(outcomes.locator("svg").first()).toHaveCSS("width", "16px");
       const outcomeBox = await outcomes.boundingBox();
@@ -452,11 +452,11 @@ test.describe("application smoke", () => {
       await selected.focus();
       await expect(selected).toHaveCSS("outline-width", "2px");
       const group = main.getByRole("region", {
-        name: "Still at club (50)",
+        name: "Still at club (49)",
         exact: true,
       });
       const table = group.getByRole("table");
-      await expect(table.locator("tbody tr")).toHaveCount(50);
+      await expect(table.locator("tbody tr")).toHaveCount(49);
       const scroller = table.locator("..");
       const initialBox = await scroller.boundingBox();
       const rows = await table.locator("tbody tr").evaluateAll((elements) =>
@@ -494,12 +494,16 @@ test.describe("application smoke", () => {
         "title",
         "Club Deportivo Internacional de Desarrollo Juvenil Barcelona",
       );
-      for (const name of ["Sold (0)", "Released (0)"]) {
-        const empty = main.getByRole("region", { name, exact: true });
-        await expect(empty.getByRole("table")).toHaveCount(0);
-        await expect(empty).toContainText("No players");
-        expect((await empty.boundingBox())?.height).toBeLessThanOrEqual(32);
-      }
+      const empty = main.getByRole("region", { name: "Sold (0)", exact: true });
+      await expect(empty.getByRole("table")).toHaveCount(0);
+      await expect(empty).toContainText("No players");
+      expect((await empty.boundingBox())?.height).toBeLessThanOrEqual(32);
+      // The member the snapshot no longer holds is released without a record to restore.
+      const released = main
+        .getByRole("region", { name: "Released (1)", exact: true })
+        .locator("tbody tr");
+      await expect(released).toHaveCount(1);
+      await expect(released.getByRole("button")).toHaveText(["Sell", "Remove"]);
       const lastRow = table.locator("tbody tr").last();
       for (const name of ["Sell", "Release", "Remove"]) {
         const action = lastRow.getByRole("button", { name, exact: true });
@@ -559,7 +563,7 @@ test.describe("application smoke", () => {
       );
       await page.keyboard.press("Enter");
       const confirmation = page.getByRole("dialog", {
-        name: "Remove Academy prospect 050 from Class of 2026?",
+        name: "Remove Academy prospect 049 from Class of 2026?",
       });
       await expect(confirmation).toContainText(
         "deletes any manual sale or release outcome",
@@ -569,7 +573,7 @@ test.describe("application smoke", () => {
       ).toHaveClass(/bg-error/);
       await confirmation.getByRole("button", { name: "Cancel" }).click();
       await expect(remove).toBeFocused();
-      await expect(table.locator("tbody tr")).toHaveCount(50);
+      await expect(table.locator("tbody tr")).toHaveCount(49);
       expect(
         await main.evaluate((element) => {
           const node = element as unknown as {
@@ -1873,21 +1877,10 @@ test.describe("application smoke", () => {
         name: "Squad actions",
         exact: true,
       });
-      const upload = actions.getByRole("button", {
-        name: "Upload Youth Academy CSV",
-        exact: true,
-      });
       const boost = actions.getByRole("button", {
         name: "Boost all CA",
         exact: true,
       });
-      const [uploadBox, boostBox] = await Promise.all([
-        upload.boundingBox(),
-        boost.boundingBox(),
-      ]);
-      if (!uploadBox || !boostBox)
-        throw new Error("Expected visible Squad action groups.");
-      expect(boostBox.x).toBeGreaterThan(uploadBox.x);
       await expect(boost).not.toHaveClass(/bg-primary/);
 
       const [mainBox, scrollerBox, mainDimensions, dimensions] =
@@ -2623,46 +2616,6 @@ test.describe("application smoke", () => {
     await expect(menu).toBeVisible();
     await heading.click({ button: "right" });
     await expect(menu).toHaveCount(0);
-  });
-
-  test("Search and Squad offer no Moneyball upload while Squad keeps Youth Academy", async ({
-    page,
-  }) => {
-    await stubTauriIpc(page, {
-      plannerSnapshot: true,
-      squadOverview: true,
-      csvImportFormat: "youthTracker",
-    });
-    await page.goto("/search");
-
-    const main = page.getByRole("main");
-    await expect(
-      main.getByRole("button", { name: "Refresh stats" }),
-    ).toBeVisible();
-    await expect(
-      main.getByRole("button", { name: "Upload Moneyball CSV" }),
-    ).toHaveCount(0);
-
-    await page.goto("/my-club");
-    await main
-      .getByRole("button", { name: "Upload Youth Academy CSV" })
-      .click();
-    await expect(
-      main.getByRole("button", { name: "Upload Squad CSV" }),
-    ).toHaveCount(0);
-    const youthDialog = page.getByRole("dialog", {
-      name: "Upload Youth Academy CSV",
-    });
-    await expect(youthDialog).toContainText(
-      "Choose a Youth Academy CSV export.",
-    );
-    await youthDialog.getByRole("button", { name: "Browse files" }).click();
-    await expect(
-      youthDialog.getByText(/Youth Academy imported/i),
-    ).toBeVisible();
-    expect(await youthDialog.textContent()).not.toContain(
-      "/tmp/smoke-import.csv",
-    );
   });
 
   test("Search refreshes save stats and shows their as-of date once a season field is in use", async ({

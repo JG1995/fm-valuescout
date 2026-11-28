@@ -11,7 +11,6 @@ it("locks the class draft and dismissal until creation settles", async () => {
   const created: AcademyClass = {
     id: 8,
     classYear: 2026,
-    isAutomatic: false,
     memberCount: 0,
   };
   let settle: (() => void) | undefined;

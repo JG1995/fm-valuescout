@@ -15,6 +15,7 @@ import { selectClasses } from "@/components/ui/field/field-styles";
 import { Panel } from "@/components/ui/panel/panel";
 import { TableSkeleton } from "@/components/ui/skeleton/skeleton";
 import { Tooltip } from "@/components/ui/tooltip/tooltip";
+import { academyKeys } from "@/features/academy/api/academy-keys";
 import { dashboardKeys } from "@/features/dashboard/api/dashboard-keys";
 import { GraphicsImage } from "@/features/graphics/components/graphics-image";
 import { managedClubQueryOptions } from "@/features/managed-club/api/managed-club-query-options";
@@ -524,6 +525,8 @@ function SearchPageContent() {
         queryClient.invalidateQueries({ queryKey: searchKeys.all }),
         queryClient.invalidateQueries({ queryKey: moneyballKeys.all }),
         queryClient.invalidateQueries({ queryKey: playerKeys.all }),
+        // Academy careers are carried forward by the same read.
+        queryClient.invalidateQueries({ queryKey: academyKeys.all }),
       ]);
     },
   });

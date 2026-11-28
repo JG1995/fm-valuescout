@@ -189,8 +189,7 @@ mod tests {
         SAVE_UNAVAILABLE_STATISTIC_KEYS,
     };
 
-    const CANONICAL_STATISTIC_KEYS: &str =
-        include_str!("../csv_import/fixtures/moneyball_canonical_statistics.txt");
+    const CANONICAL_STATISTIC_KEYS: &str = include_str!("canonical_statistics.txt");
 
     #[test]
     fn pins_the_exact_canonical_metric_catalogue() {

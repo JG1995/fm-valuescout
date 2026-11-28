@@ -1,7 +1,6 @@
 export type AcademyClass = {
   id: number;
   classYear: number;
-  isAutomatic: boolean;
   memberCount: number;
 };
 
@@ -20,8 +19,14 @@ export type AcademyMemberOutcomeStatus = "sold" | "released";
 export type AcademyMemberOutcome = {
   status: AcademyMemberOutcomeStatus;
   buyingClub: string | null;
+  /** Known for a recorded sale, never for one the snapshot shows. */
   saleFeeEur: number | null;
+  /** The user recorded it; otherwise the current snapshot shows it. */
+  recorded: boolean;
 };
+
+/** An outcome to record. */
+export type AcademyMemberOutcomeInput = Omit<AcademyMemberOutcome, "recorded">;
 
 export type AcademyMember = {
   playerUid: number;
@@ -41,7 +46,6 @@ export type AcademyMember = {
   reportedCareerAppearances: number | null;
   goals: number | null;
   assists: number | null;
-  internationalCaps: number | null;
   outcome: AcademyMemberOutcome | null;
   isGraduate: boolean | null;
   /** The club has loaned the member out; `currentClub` is the borrower. */

@@ -1079,6 +1079,108 @@ pub const PLAYER_APPEARANCE_V68_SQL: &str = "
 ALTER TABLE players ADD COLUMN appearance INTEGER;
 ";
 
+/// Academy classes now hold detected youth intakes. Fills them from the snapshots each save
+/// kept: a generated player (Unique ID from 2,000,000,000) aged 17 or under whom the managed
+/// club owns, and whom the save's previous snapshot does not hold, joins the class of the year
+/// he first appears in. Then drops the automatic per-year classes that stayed empty and the
+/// marker that protected them. The two `players` reads are pinned to their club indexes, because
+/// SQLite otherwise reads the loaned-out half by age across the whole snapshot.
+pub const ACADEMY_INTAKE_CLASSES_V69_SQL: &str = "
+CREATE TEMP TABLE academy_intake_backfill AS
+WITH ordered AS (
+    SELECT id, save_id, game_date, game_date_source,
+           LAG(id) OVER (PARTITION BY save_id ORDER BY game_date, loaded_at_utc, id) AS earlier_id
+    FROM snapshots
+    WHERE game_date IS NOT NULL
+),
+compared AS (
+    SELECT ordered.id AS snapshot_id, ordered.earlier_id, ordered.save_id, ordered.game_date,
+           club.club_name, club.club_uid
+    FROM ordered
+    INNER JOIN managed_club_settings club ON club.save_id = ordered.save_id
+    WHERE ordered.earlier_id IS NOT NULL
+      AND ordered.game_date_source IN ('memory', 'derived')
+      AND ordered.game_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+),
+owned AS (
+    SELECT compared.save_id, compared.game_date, compared.earlier_id, p.uid, p.name, p.age
+    FROM compared
+    INNER JOIN players p INDEXED BY idx_players_snapshot_current_club
+        ON p.snapshot_id = compared.snapshot_id AND p.current_club = compared.club_name
+    WHERE compared.club_uid IS NULL OR p.current_club_uid IS compared.club_uid
+    UNION ALL
+    SELECT compared.save_id, compared.game_date, compared.earlier_id, p.uid, p.name, p.age
+    FROM compared
+    INNER JOIN players p INDEXED BY idx_players_snapshot_loaned_parent_club
+        ON p.snapshot_id = compared.snapshot_id AND p.parent_club = compared.club_name
+           AND p.on_loan = 1
+    WHERE compared.club_uid IS NULL OR p.parent_club_uid IS compared.club_uid
+)
+SELECT owned.save_id, CAST(substr(owned.game_date, 1, 4) AS INTEGER) AS class_year,
+       owned.game_date, owned.uid, owned.name
+FROM owned
+WHERE owned.uid >= 2000000000
+  AND owned.age <= 17
+  AND trim(owned.name) <> ''
+  AND NOT EXISTS (
+      SELECT 1 FROM players earlier
+      WHERE earlier.snapshot_id = owned.earlier_id AND earlier.uid = owned.uid
+  )
+  AND NOT EXISTS (
+      SELECT 1 FROM academy_memberships membership
+      WHERE membership.save_id = owned.save_id AND membership.player_uid = owned.uid
+  );
+
+INSERT OR IGNORE INTO academy_classes (save_id, class_year)
+SELECT DISTINCT save_id, class_year
+FROM academy_intake_backfill;
+
+-- A player seen as new twice keeps the class of his first appearance.
+INSERT OR IGNORE INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
+SELECT intake.save_id, class.id, intake.uid, intake.name
+FROM academy_intake_backfill intake
+INNER JOIN academy_classes class
+    ON class.save_id = intake.save_id AND class.class_year = intake.class_year
+ORDER BY intake.game_date;
+
+DROP TABLE academy_intake_backfill;
+
+DELETE FROM academy_classes
+WHERE is_automatic = 1
+  AND NOT EXISTS (
+      SELECT 1 FROM academy_memberships membership
+      WHERE membership.save_id = academy_classes.save_id
+        AND membership.class_id = academy_classes.id
+  );
+
+ALTER TABLE academy_classes DROP COLUMN is_automatic;
+";
+
+/// A member's competitive matches from the season statistics of the linked FM save: the seasons
+/// FM has closed, and the running one as last read (`academy::service::CareerStats`). It
+/// replaces the Youth Tracker CSV values, which FM27 cannot export. The values carry no range
+/// checks, so an unexpected statistic never fails the read that stores it.
+pub const ACADEMY_CAREER_STATS_V70_SQL: &str = "
+CREATE TABLE academy_member_career_stats (
+    save_id INTEGER NOT NULL,
+    player_uid INTEGER NOT NULL,
+    closed_appearances INTEGER NOT NULL,
+    closed_goals INTEGER NOT NULL,
+    closed_assists INTEGER NOT NULL,
+    season_as_of TEXT NOT NULL,
+    season_minutes INTEGER NOT NULL,
+    season_appearances INTEGER NOT NULL,
+    season_goals INTEGER NOT NULL,
+    season_assists INTEGER NOT NULL,
+    PRIMARY KEY (save_id, player_uid),
+    FOREIGN KEY (save_id, player_uid)
+        REFERENCES academy_memberships(save_id, player_uid)
+        ON DELETE CASCADE
+);
+
+DROP TABLE player_youth_career_stats;
+";
+
 /// Gives each of the 138 season statistics its own column in place of the JSON object that
 /// repeated every key in every row, and drops the asking-price and import-time columns that
 /// nothing read. This is the checked-in column inventory: a later catalog change needs a
@@ -2158,6 +2260,16 @@ pub fn all() -> &'static [Migration] {
             description: "add_player_appearance",
             sql: PLAYER_APPEARANCE_V68_SQL,
         },
+        Migration {
+            version: 69,
+            description: "fill_academy_classes_from_intakes",
+            sql: ACADEMY_INTAKE_CLASSES_V69_SQL,
+        },
+        Migration {
+            version: 70,
+            description: "store_academy_careers_from_season_statistics",
+            sql: ACADEMY_CAREER_STATS_V70_SQL,
+        },
     ]
 }
 
@@ -2499,7 +2611,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read v45 version"),
-            68
+            70
         );
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
@@ -2599,7 +2711,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read v45 version"),
-            68
+            70
         );
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM planner_tactic_lanes", [], |row| {
@@ -2624,7 +2736,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read reapplied version"),
-            68
+            70
         );
         assert_eq!(
             tactic::get_tactic(&conn, 1).expect("read preserved tactic"),
@@ -3028,7 +3140,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         assert_player_sort_index_inventory(&conn);
 
         let demo_value_exists: bool = conn
@@ -3146,7 +3258,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         assert_player_sort_index_inventory(&conn);
         assert_eq!(
             conn.query_row(
@@ -3227,7 +3339,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         let player_columns = table_columns(&conn, "players");
         assert!(player_columns.contains(&"potential_attributes_json".to_string()));
         assert!(player_columns.contains(&"potential_projection_model_version".to_string()));
@@ -3519,14 +3631,6 @@ mod tests {
         )
         .expect("create academy outcome");
         conn.execute(
-            "INSERT INTO player_youth_career_stats (
-                 save_id, player_uid, career_appearances, international_caps,
-                 career_goals, career_assists
-             ) VALUES (?1, 77, 14, 2, 3, 5)",
-            [first_save_id],
-        )
-        .expect("create youth enrichment");
-        conn.execute(
             "INSERT INTO player_moneyball_stats (
                  snapshot_id, player_uid, asking_price_kind,
                  asking_price_lower_eur, starts, substitute_appearances,
@@ -3548,7 +3652,7 @@ mod tests {
         let preservation_queries = [
             (
                 "academy_classes",
-                "SELECT json_array(id, save_id, class_year, is_automatic)
+                "SELECT json_array(id, save_id, class_year)
                  FROM academy_classes ORDER BY id",
             ),
             (
@@ -3560,13 +3664,6 @@ mod tests {
                 "academy_member_outcomes",
                 "SELECT json_array(save_id, player_uid, status, buying_club, sale_fee_eur)
                  FROM academy_member_outcomes ORDER BY save_id, player_uid",
-            ),
-            (
-                "player_youth_career_stats",
-                "SELECT json_array(
-                     save_id, player_uid, career_appearances, international_caps,
-                     career_goals, career_assists, imported_at_utc
-                 ) FROM player_youth_career_stats ORDER BY save_id, player_uid",
             ),
             // The columns that migration 66 keeps; it moves the statistics into their own.
             (
@@ -3750,7 +3847,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         let settings: Vec<(i64, String, String)> = conn
             .prepare(
                 "SELECT save_id, team, display_name
@@ -3989,7 +4086,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         // Migration 66 keeps the playing time and the statistics, each in its own column.
         type MoneyballRow = (
             Option<i64>,
@@ -4153,7 +4250,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         let existing: i64 = conn
             .query_row("SELECT reveal_hidden_information FROM saves", [], |row| {
                 row.get(0)
@@ -4236,12 +4333,6 @@ mod tests {
         )
         .expect("insert academy class");
         conn.execute(
-            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
-             VALUES (?1, 42, 12)",
-            [save_id],
-        )
-        .expect("insert youth enrichment");
-        conn.execute(
             "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
              VALUES (?1, 42, '{}')",
             [snapshot_id],
@@ -4253,7 +4344,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -4295,16 +4386,6 @@ mod tests {
         );
         assert_eq!(
             conn.query_row(
-                "SELECT career_appearances FROM player_youth_career_stats
-                 WHERE save_id = ?1 AND player_uid = 42",
-                [save_id],
-                |row| row.get::<_, i64>(0),
-            )
-            .expect("read youth enrichment"),
-            12
-        );
-        assert_eq!(
-            conn.query_row(
                 "SELECT COUNT(*) FROM player_moneyball_stats
                  WHERE snapshot_id = ?1 AND player_uid = 42",
                 [snapshot_id],
@@ -4333,7 +4414,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         // v39 drops normalized tables
         for table in ["player_role_scores", "player_potential_role_scores"] {
             let exists: bool = conn
@@ -4606,18 +4687,6 @@ mod tests {
         let conn = open_migrated(&temp_dir.path().join("csv-enrichment-migration-test.db"));
 
         assert_eq!(
-            table_columns(&conn, "player_youth_career_stats"),
-            [
-                "save_id",
-                "player_uid",
-                "career_appearances",
-                "international_caps",
-                "career_goals",
-                "career_assists",
-                "imported_at_utc",
-            ]
-        );
-        assert_eq!(
             table_columns(&conn, "player_moneyball_stats_legacy"),
             [
                 "save_id",
@@ -4645,17 +4714,16 @@ mod tests {
             ]
         );
 
-        for table in ["player_youth_career_stats", "player_moneyball_stats_legacy"] {
-            let (parent_table, on_delete): (String, String) = conn
-                .query_row(
-                    &format!("SELECT \"table\", on_delete FROM pragma_foreign_key_list('{table}')"),
-                    [],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .expect("read enrichment foreign key");
-            assert_eq!(parent_table, "saves");
-            assert_eq!(on_delete, "CASCADE");
-        }
+        let (parent_table, on_delete): (String, String) = conn
+            .query_row(
+                "SELECT \"table\", on_delete
+                 FROM pragma_foreign_key_list('player_moneyball_stats_legacy')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read legacy foreign key");
+        assert_eq!(parent_table, "saves");
+        assert_eq!(on_delete, "CASCADE");
         let moneyball_foreign_keys: Vec<(String, String)> = conn
             .prepare("SELECT \"table\", on_delete FROM pragma_foreign_key_list('player_moneyball_stats')")
             .expect("prepare Moneyball foreign-key query")
@@ -4677,23 +4745,6 @@ mod tests {
         let snapshot_id = conn.last_insert_rowid();
         insert_player(&conn, snapshot_id, 77);
 
-        conn.execute(
-            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
-             VALUES (?1, 77, 12)",
-            [save_id],
-        )
-        .expect("insert youth career stats");
-        let error = conn
-            .execute(
-                "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
-                 VALUES (?1, 77, 13)",
-                [save_id],
-            )
-            .expect_err("reject duplicate youth player row");
-        assert_eq!(
-            error.sqlite_error_code(),
-            Some(rusqlite::ErrorCode::ConstraintViolation)
-        );
         conn.execute(
             "INSERT INTO player_moneyball_stats_legacy (
                 save_id, player_uid, statistics_json, imported_at_utc
@@ -4730,14 +4781,14 @@ mod tests {
 
         conn.execute("DELETE FROM snapshots WHERE id = ?1", [snapshot_id])
             .expect("delete snapshot");
-        for table in ["player_youth_career_stats", "player_moneyball_stats_legacy"] {
-            let count: i64 = conn
-                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
-                    row.get(0)
-                })
-                .expect("count enrichment after snapshot deletion");
-            assert_eq!(count, 1, "{table} survives snapshot deletion");
-        }
+        let legacy_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_moneyball_stats_legacy",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count legacy rows after snapshot deletion");
+        assert_eq!(legacy_count, 1, "the quarantine survives snapshot deletion");
         let current_moneyball_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM player_moneyball_stats", [], |row| {
                 row.get(0)
@@ -4747,11 +4798,7 @@ mod tests {
 
         conn.execute("DELETE FROM saves WHERE id = ?1", [save_id])
             .expect("delete save");
-        for table in [
-            "player_youth_career_stats",
-            "player_moneyball_stats_legacy",
-            "player_moneyball_stats",
-        ] {
+        for table in ["player_moneyball_stats_legacy", "player_moneyball_stats"] {
             let count: i64 = conn
                 .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
                     row.get(0)
@@ -4779,11 +4826,6 @@ mod tests {
         }
 
         for (statement, params) in [
-            (
-                "INSERT INTO player_youth_career_stats (save_id, player_uid, career_goals)
-                 VALUES (?1, 9, -1)",
-                params![save_id],
-            ),
             (
                 "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, starts)
                  VALUES (?1, 10, -1)",
@@ -4846,7 +4888,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, managed_club_settings.club_name
@@ -4861,11 +4903,7 @@ mod tests {
         assert_eq!(save_name, "Existing save");
         assert_eq!(is_current, 1);
         assert_eq!(primary_club, "Existing FC");
-        for table in [
-            "player_youth_career_stats",
-            "player_moneyball_stats_legacy",
-            "player_moneyball_stats",
-        ] {
+        for table in ["player_moneyball_stats_legacy", "player_moneyball_stats"] {
             let count: i64 = conn
                 .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
                     row.get(0)
@@ -4917,7 +4955,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -5056,7 +5094,7 @@ mod tests {
         assert_eq!(table_name, "academy_classes");
         assert_eq!(
             table_columns(&conn, "academy_classes"),
-            ["id", "save_id", "class_year", "is_automatic"]
+            ["id", "save_id", "class_year"]
         );
         assert_eq!(
             table_columns(&conn, "academy_memberships"),
@@ -5072,6 +5110,31 @@ mod tests {
                 "sale_fee_eur"
             ]
         );
+        assert_eq!(
+            table_columns(&conn, "academy_member_career_stats"),
+            [
+                "save_id",
+                "player_uid",
+                "closed_appearances",
+                "closed_goals",
+                "closed_assists",
+                "season_as_of",
+                "season_minutes",
+                "season_appearances",
+                "season_goals",
+                "season_assists",
+            ]
+        );
+        let (parent_table, on_delete): (String, String) = conn
+            .query_row(
+                "SELECT \"table\", on_delete
+                 FROM pragma_foreign_key_list('academy_member_career_stats')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read career foreign key");
+        assert_eq!(parent_table, "academy_memberships");
+        assert_eq!(on_delete, "CASCADE");
     }
 
     #[test]
@@ -5104,7 +5167,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         let primary_club: String = conn
             .query_row(
                 "SELECT club_name FROM managed_club_settings WHERE save_id = ?1",
@@ -5116,7 +5179,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v11_classes_to_automatic_baselines_without_overwriting_memberships() {
+    fn migrates_v11_classes_keeping_their_members_and_no_empty_baseline() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = Connection::open(temp_dir.path().join("academy-v11-migration-test.db"))
             .expect("open test db");
@@ -5152,26 +5215,21 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
-        assert_eq!(
-            table_columns(&conn, "academy_classes"),
-            ["id", "save_id", "class_year", "is_automatic"]
-        );
-        let (class_id, automatic, member_count): (i64, i32, i64) = conn
+        assert_eq!(version, 70);
+        let (class_id, member_count): (i64, i64) = conn
             .query_row(
-                "SELECT class.id, class.is_automatic, COUNT(member.player_uid)
+                "SELECT class.id, COUNT(member.player_uid)
                  FROM academy_classes class
                  LEFT JOIN academy_memberships member
                    ON member.save_id = class.save_id
                   AND member.class_id = class.id
                  WHERE class.save_id = ?1 AND class.class_year = 2025
-                 GROUP BY class.id, class.is_automatic",
+                 GROUP BY class.id",
                 [first_save_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .expect("read promoted existing class");
+            .expect("read existing class");
         assert_eq!(class_id, existing_class_id);
-        assert_eq!(automatic, 1);
         assert_eq!(member_count, 1);
         let second_baseline_count: i64 = conn
             .query_row(
@@ -5180,11 +5238,11 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("count second-save baseline");
-        assert_eq!(second_baseline_count, 1);
+        assert_eq!(second_baseline_count, 0);
     }
 
     #[test]
-    fn migrates_v13_current_snapshot_to_its_observed_automatic_class() {
+    fn migrates_v13_snapshots_and_keeps_no_empty_automatic_class() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = Connection::open(temp_dir.path().join("academy-v13-migration-test.db"))
             .expect("open test db");
@@ -5250,27 +5308,129 @@ mod tests {
         assert_eq!(staff_count, 0);
         assert_eq!(manager_uid, None);
 
-        let class_years = conn
+        let class_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM academy_classes", [], |row| row.get(0))
+            .expect("count classes");
+        assert_eq!(class_count, 0);
+    }
+
+    #[test]
+    fn migrates_v68_classes_to_the_intakes_of_the_kept_snapshots() {
+        const GENERATED: i64 = 2_000_000_000;
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("academy-v68-migration-test.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 68) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v68");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute_batch(
+            "INSERT INTO saves (id, name, is_active) VALUES (1, 'Managed', 1), (2, 'Unmanaged', 0);
+             INSERT INTO managed_club_settings (save_id, club_name, club_uid)
+             VALUES (1, 'Club', 10);
+             INSERT INTO academy_classes (id, save_id, class_year, is_automatic) VALUES
+                 (1, 1, 2019, 0), (2, 1, 2020, 0), (3, 1, 2025, 1), (4, 1, 2026, 1),
+                 (5, 1, 2027, 1), (6, 2, 2025, 1);",
+        )
+        .expect("seed saves and classes");
+        let insert_snapshot = |id: i64, save_id: i64, game_date: &str, is_current: bool| {
+            conn.execute(
+                "INSERT INTO snapshots (
+                    id, save_id, is_current, is_kept, schema_version, generated_at_utc,
+                    game_version, supported_game_version, bridge_version, protocol_version,
+                    game_date, game_date_source, scan_truncated, max_accepted, player_count
+                 ) VALUES (
+                    ?1, ?2, ?3, 1, 11, ?4 || 'T12:00:00Z', '27.1.0', '27.1', '0.40.0', 1,
+                    ?4, 'derived', 0, NULL, 0
+                 )",
+                params![id, save_id, is_current, game_date],
+            )
+            .expect("insert snapshot");
+        };
+        insert_snapshot(1, 1, "2027-01-23", false);
+        insert_snapshot(2, 1, "2027-05-22", false);
+        insert_snapshot(3, 1, "2028-05-27", true);
+        insert_snapshot(4, 2, "2027-01-23", false);
+        insert_snapshot(5, 2, "2027-05-22", true);
+        // (snapshot, uid, name, age, current club, its uid, on loan from the managed club)
+        let players: &[(i64, i64, &str, i64, &str, i64, bool)] = &[
+            (1, GENERATED + 1, "Earlier Intake", 16, "Club", 10, false),
+            (2, GENERATED + 1, "Earlier Intake", 16, "Club", 10, false),
+            (2, GENERATED + 10, "Intake 2027", 15, "Club", 10, false),
+            (2, GENERATED + 11, "Loaned Out", 16, "Borrower", 40, true),
+            (2, GENERATED + 12, "Too Old", 18, "Club", 10, false),
+            (2, 90, "Database Player", 16, "Club", 10, false),
+            (2, GENERATED + 13, "Namesake Club", 15, "Club", 99, false),
+            (2, GENERATED + 14, "Placed By Hand", 16, "Club", 10, false),
+            (3, GENERATED + 1, "Earlier Intake", 17, "Club", 10, false),
+            (3, GENERATED + 10, "Intake 2027", 16, "Club", 10, false),
+            (3, GENERATED + 11, "Loaned Out", 17, "Club", 10, false),
+            (3, GENERATED + 14, "Placed By Hand", 17, "Club", 10, false),
+            (3, GENERATED + 20, "Intake 2028", 15, "Club", 10, false),
+            (5, GENERATED + 30, "No Managed Club", 15, "Club", 10, false),
+        ];
+        for &(snapshot_id, uid, name, age, club, club_uid, loaned_out) in players {
+            conn.execute(
+                "INSERT INTO players (
+                    snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year, age,
+                    nationalities_json, preferred_foot, positions_json, attributes_json,
+                    hidden_attributes_json, personality_json, current_club, current_club_uid,
+                    parent_club, parent_club_uid, on_loan
+                 ) VALUES (
+                    ?1, ?2, 100, 150, ?3, 2011, 1, ?4, '[]', 'Right', '{}', '{}', '{}', '{}',
+                    ?5, ?6, 'Club', 10, ?7
+                 )",
+                params![snapshot_id, uid, name, age, club, club_uid, loaned_out],
+            )
+            .expect("insert player");
+        }
+        conn.execute(
+            "INSERT INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
+             VALUES (1, 2, ?1, 'Placed By Hand')",
+            [GENERATED + 14],
+        )
+        .expect("insert manual membership");
+
+        apply(&conn).expect("migrate v68 database");
+
+        assert_eq!(
+            table_columns(&conn, "academy_classes"),
+            ["id", "save_id", "class_year"]
+        );
+        let members = conn
             .prepare(
-                "SELECT class_year
-                 FROM academy_classes
-                 WHERE save_id = ?1
-                 ORDER BY class_year",
+                "SELECT class.save_id, class.class_year, member.last_known_name
+                 FROM academy_classes class
+                 LEFT JOIN academy_memberships member
+                   ON member.save_id = class.save_id AND member.class_id = class.id
+                 ORDER BY class.save_id, class.class_year, member.last_known_name",
             )
-            .expect("prepare class query")
-            .query_map([save_id], |row| row.get::<_, i64>(0))
-            .expect("query automatic classes")
+            .expect("prepare members")
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })
+            .expect("query members")
             .collect::<Result<Vec<_>, _>>()
-            .expect("read automatic classes");
-        assert_eq!(class_years, vec![2025, 2030]);
-        let malformed_date_class_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2030",
-                [malformed_date_save_id],
-                |row| row.get(0),
-            )
-            .expect("count malformed-date classes");
-        assert_eq!(malformed_date_class_count, 0);
+            .expect("collect members");
+        let member = |year: i64, name: &str| (1, year, Some(name.to_string()));
+        assert_eq!(
+            members,
+            [
+                (1, 2019, None),
+                member(2020, "Placed By Hand"),
+                member(2027, "Intake 2027"),
+                member(2027, "Loaned Out"),
+                member(2028, "Intake 2028"),
+            ]
+        );
     }
 
     #[test]
@@ -5393,7 +5553,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -5508,7 +5668,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
 
         for table in [
             "player_role_scores",
@@ -5969,7 +6129,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -6022,7 +6182,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -6088,7 +6248,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("check normalized absence");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         assert_eq!(staff_count, 1);
         assert!(!normalized_exists);
     }
@@ -6359,7 +6519,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
     }
 
     #[test]
@@ -6393,7 +6553,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -6433,7 +6593,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 68, "legacy version {legacy_version}");
+            assert_eq!(version, 70, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -6510,7 +6670,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 68);
+        assert_eq!(migrations.len(), 70);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -6728,7 +6888,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .expect("read v45 version"),
-            68
+            70
         );
         let targets = conn
             .prepare(
@@ -7089,7 +7249,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read v42 version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         assert_eq!(table_columns(&conn, "player_role_metrics").len(), 162);
         let row_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| {
@@ -7806,7 +7966,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         // Complete current rows are copied; a partial row and the complete historical row are not.
         assert_eq!(
             query_json_rows(
@@ -7963,7 +8123,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 68);
+        assert_eq!(version, 70);
         let columns = table_columns(&conn, "player_moneyball_stats");
         assert_eq!(
             columns[..6],

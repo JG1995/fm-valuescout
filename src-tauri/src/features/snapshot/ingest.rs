@@ -530,6 +530,15 @@ pub(crate) fn publish_prepared_snapshot_canonical(
         .map_err(|e| e.to_string())?;
     let raw = &prepared.raw;
     let snapshot_id = insert_prepared_snapshot(&tx, save_id, raw, bridge_source_request_id)?;
+    // Read before the delete below: the replaced snapshot is the only record of who was in the
+    // game before this load.
+    let intake_baseline = academy_service::intake_baseline(
+        &tx,
+        save_id,
+        snapshot_id,
+        raw.game_date.as_deref(),
+        &raw.game_date_source,
+    )?;
     // Load Data replaces the save's other snapshots unless the user kept them. Deleting after
     // the insert keeps snapshot IDs increasing: SQLite reuses a deleted maximum rowid, and the
     // frontend keys views on the snapshot ID.
@@ -610,15 +619,9 @@ pub(crate) fn publish_prepared_snapshot_canonical(
                         .map(|(s, scores)| (s.uid, scores.as_slice())),
                 )?;
                 crate::features::staff::scoring::assert_snapshot_complete(&tx, snapshot_id)?;
-                academy_service::ensure_class_for_game_date(
-                    &tx,
-                    save_id,
-                    raw.game_date.as_deref(),
-                    &raw.game_date_source,
-                )?;
             } else if Some(effective) != kept_current_id {
                 // The replaced current snapshot gave way to a kept one dated after this load.
-                promote_kept_snapshot(&tx, save_id, effective)?;
+                promote_kept_snapshot(&tx, effective)?;
             }
         }
         current_id
@@ -626,6 +629,13 @@ pub(crate) fn publish_prepared_snapshot_canonical(
     let effective_snapshot_id = effective_snapshot_id
         .ok_or_else(|| "ingest did not select a current snapshot".to_string())?;
     managed_club_service::adopt_manager_club(&tx, effective_snapshot_id)?;
+    // After the adoption, so a manager who changed clubs gets the new club's intake.
+    if let Some(baseline) = intake_baseline
+        .as_ref()
+        .filter(|_| effective_snapshot_id == snapshot_id)
+    {
+        academy_service::record_intake(&tx, save_id, snapshot_id, baseline)?;
+    }
     let stored_snapshot = get_snapshot_by_id(&tx, snapshot_id)?;
     let effective_snapshot = if effective_snapshot_id == snapshot_id {
         stored_snapshot.clone()
@@ -646,26 +656,9 @@ pub(crate) fn publish_prepared_snapshot_canonical(
 
 /// Materializes a kept snapshot's derived rows from its raw facts when it becomes current
 /// again, as snapshot deletion does.
-fn promote_kept_snapshot(
-    tx: &Transaction<'_>,
-    save_id: i64,
-    snapshot_id: i64,
-) -> Result<(), String> {
+fn promote_kept_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
     potential_scores::rebuild_snapshot(tx, snapshot_id)?;
-    crate::features::staff::scoring::rebuild_snapshot(tx, snapshot_id)?;
-    let (game_date, game_date_source): (Option<String>, String) = tx
-        .query_row(
-            "SELECT game_date, game_date_source FROM snapshots WHERE id = ?1",
-            [snapshot_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(|error| error.to_string())?;
-    academy_service::ensure_class_for_game_date(
-        tx,
-        save_id,
-        game_date.as_deref(),
-        &game_date_source,
-    )
+    crate::features::staff::scoring::rebuild_snapshot(tx, snapshot_id)
 }
 
 /// Compatibility wrapper without timings/progress. Delegates to the canonical
@@ -1376,22 +1369,6 @@ mod tests {
             |row| row.get(0),
         )
         .expect("count snapshots")
-    }
-
-    fn automatic_class_years(conn: &Connection, save_id: i64) -> Vec<i64> {
-        let mut statement = conn
-            .prepare(
-                "SELECT class_year
-                 FROM academy_classes
-                 WHERE save_id = ?1 AND is_automatic = 1
-                 ORDER BY class_year",
-            )
-            .expect("prepare class query");
-        statement
-            .query_map(params![save_id], |row| row.get(0))
-            .expect("query classes")
-            .collect::<Result<Vec<_>, _>>()
-            .expect("read classes")
     }
 
     fn dump_with_game_date(game_date: Option<&str>, player_name: &str) -> String {
@@ -2344,10 +2321,6 @@ mod tests {
         assert_eq!(staff_count_for_snapshot(&conn, first.id), 1);
         assert_eq!(player_count_for_snapshot(&conn, second.id), 1);
         assert_eq!(staff_count_for_snapshot(&conn, second.id), 1);
-        assert_eq!(
-            automatic_class_years(&conn, active_save.id),
-            vec![2025, 2027]
-        );
 
         let mut current_players = conn
             .prepare(
@@ -2405,10 +2378,6 @@ mod tests {
         assert_eq!(compact_row_count(&conn, later.id), 1);
         assert_eq!(snapshot_count(&conn, active_save.id), 2);
         assert!(snapshot_row_exists(&conn, earlier.id));
-        assert_eq!(
-            automatic_class_years(&conn, active_save.id),
-            vec![2025, 2026, 2027]
-        );
     }
 
     #[test]
@@ -2564,10 +2533,6 @@ mod tests {
         assert_eq!(compact_row_count(&conn, dated.id), 1);
         assert_eq!(compact_row_count(&conn, undated.id), 0);
         assert!(snapshot_row_exists(&conn, undated.id));
-        assert_eq!(
-            automatic_class_years(&conn, active_save.id),
-            vec![2025, 2026]
-        );
     }
 
     #[test]
@@ -2704,7 +2669,6 @@ mod tests {
 
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(second.id));
         assert!(snapshot_row_exists(&conn, first.id));
-        assert_eq!(automatic_class_years(&conn, active_save.id), vec![2025]);
     }
 
     #[test]

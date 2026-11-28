@@ -121,7 +121,6 @@ describe("academy route", () => {
       ),
       goals: valueOrDefault(overrides.goals, null),
       assists: valueOrDefault(overrides.assists, null),
-      internationalCaps: valueOrDefault(overrides.internationalCaps, null),
       outcome: valueOrDefault(overrides.outcome, null),
       isGraduate: valueOrDefault(overrides.isGraduate, null),
       loanedOut: overrides.loanedOut ?? false,
@@ -221,7 +220,7 @@ describe("academy route", () => {
     await user.click(screen.getByRole("tab", { name: "Graduates" }));
     expect(router.state.location.search).toEqual({ view: "graduates" });
     expect(
-      screen.getByText(/career appearances have not been imported/i),
+      screen.getByText("Needs season stats from your linked FM save."),
     ).toBeInTheDocument();
   });
 
@@ -255,19 +254,6 @@ describe("academy route", () => {
     expect(
       await screen.findByRole("dialog", { name: "Create academy class" }),
     ).toBeInTheDocument();
-  });
-
-  it("does not offer deletion for an automatically managed class", async () => {
-    await loadConfiguredSave();
-    setAcademyClasses([
-      { id: 7, classYear: 2025, memberCount: 0, isAutomatic: true },
-    ]);
-    renderAcademyRoute("/academy?view=class&classId=7");
-
-    expect(
-      await screen.findByRole("combobox", { name: "Academy class" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete class" })).toBeNull();
   });
 
   it("switches Academy classes from the Class workspace", async () => {
@@ -328,7 +314,7 @@ describe("academy route", () => {
         screen.getByRole("region", { name: "Academy outcomes" }),
       ).getByText("Goals"),
     ).toHaveAccessibleDescription(
-      "Career goals have not been imported for every tracked player.",
+      "Needs season stats from your linked FM save.",
     );
 
     const outcomes = screen.getByRole("region", {
@@ -348,9 +334,6 @@ describe("academy route", () => {
     ).toHaveTextContent("0");
     expect(
       within(outcomes).getByTestId("academy-stat-assists"),
-    ).toHaveTextContent("—");
-    expect(
-      within(outcomes).getByTestId("academy-stat-international-caps"),
     ).toHaveTextContent("—");
 
     const context = screen.getByRole("region", {
@@ -377,11 +360,11 @@ describe("academy route", () => {
         reportedCareerAppearances: 1,
         goals: null,
         assists: null,
-        internationalCaps: null,
         outcome: {
           status: "sold",
           buyingClub: "North FC",
           saleFeeEur: 120_000,
+          recorded: true,
         },
       }),
     ]);
@@ -909,16 +892,27 @@ describe("academy route", () => {
     setAcademyAssignError(null);
   });
 
-  it("keeps departed and unresolved members with accessible warnings", async () => {
+  function movedMember() {
+    return academyMember({
+      playerUid: 77,
+      lastKnownName: "Moved prospect",
+      currentClub: "Other FC",
+      state: "departed",
+      outcome: {
+        status: "sold",
+        buyingClub: "Other FC",
+        saleFeeEur: null,
+        recorded: false,
+      },
+    });
+  }
+
+  it("groups a member who left by what the snapshot shows", async () => {
     await loadConfiguredSave();
-    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 2 }]);
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 3 }]);
     setAcademyClassMembers(7, [
-      academyMember({
-        playerUid: 77,
-        lastKnownName: "Departed prospect",
-        currentClub: "Other FC",
-        state: "departed",
-      }),
+      academyMember({ playerUid: 76, lastKnownName: "Club prospect" }),
+      movedMember(),
       academyMember({
         playerUid: 78,
         lastKnownName: "Missing prospect",
@@ -931,25 +925,82 @@ describe("academy route", () => {
         heightCm: null,
         preferredFoot: null,
         state: "unresolved",
+        outcome: {
+          status: "released",
+          buyingClub: null,
+          saleFeeEur: null,
+          recorded: false,
+        },
       }),
     ]);
     renderAcademyRoute("/academy?view=class&classId=7");
 
     expect(
-      await screen.findByRole("cell", { name: /^Departed prospect/ }),
+      await screen.findByRole("heading", { level: 3, name: "Sold (1)" }),
     ).toBeInTheDocument();
+    for (const name of ["Still at club (1)", "Released (1)"]) {
+      expect(
+        screen.getByRole("heading", { level: 3, name }),
+      ).toBeInTheDocument();
+    }
+    const moved = screen.getByRole("row", {
+      name: /^Moved prospect Sold to Other FC/,
+    });
     expect(
-      screen.getByRole("cell", { name: /^Missing prospect/ }),
+      within(moved).getByRole("button", { name: "Release" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("status")[0]).toHaveTextContent(
-      "No longer at your managed club",
-    );
-    expect(screen.getAllByRole("status")[1]).toHaveTextContent(
+
+    // Only the member the snapshot no longer holds needs a word of explanation.
+    expect(screen.getByRole("status")).toHaveTextContent(
       "Unavailable in the current snapshot",
     );
+    const missing = screen.getByRole("row", { name: /^Missing prospect/ });
+    expect(missing).toHaveTextContent("—");
     expect(
-      screen.getByRole("row", { name: /^Missing prospect/ }),
-    ).toHaveTextContent("—");
+      within(missing).getByRole("button", { name: "Sell" }),
+    ).toBeInTheDocument();
+    // Nothing was recorded, so there is nothing to restore or to release again.
+    for (const name of ["Restore", "Release"]) {
+      expect(within(missing).queryByRole("button", { name })).toBeNull();
+    }
+  });
+
+  it("records the fee of a sale the snapshot shows, with its club filled in", async () => {
+    const user = userEvent.setup();
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 1 }]);
+    setAcademyClassMembers(7, [movedMember()]);
+    renderAcademyRoute("/academy?view=class&classId=7");
+
+    await user.click(
+      within(
+        await screen.findByRole("row", {
+          name: /^Moved prospect Sold to Other FC/,
+        }),
+      ).getByRole("button", { name: "Sell" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Record sale for Moved prospect",
+    });
+    expect(
+      within(dialog).getByRole("combobox", { name: "Buying club" }),
+    ).toHaveValue("Other FC");
+    expect(
+      within(dialog).queryByRole("button", {
+        name: "Clear record",
+      }),
+    ).toBeNull();
+    await user.type(
+      within(dialog).getByRole("spinbutton", { name: "Sale fee (€)" }),
+      "250000",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save sale" }));
+
+    expect(
+      await within(
+        screen.getByRole("row", { name: /^Moved prospect Sold to Other FC/ }),
+      ).findByText("€250k"),
+    ).toBeInTheDocument();
   });
 
   it("marks a member the club has loaned out without a warning", async () => {
@@ -1083,9 +1134,9 @@ describe("academy route", () => {
     await user.click(
       within(
         await screen.findByRole("dialog", {
-          name: "Restore Club prospect to still at club?",
+          name: "Clear the recorded outcome for Club prospect?",
         }),
-      ).getByRole("button", { name: "Restore player" }),
+      ).getByRole("button", { name: "Clear record" }),
     );
     expect(
       await screen.findByRole("heading", {
@@ -1147,6 +1198,7 @@ describe("academy route", () => {
           status: "sold",
           buyingClub: "Rovers FC",
           saleFeeEur: 1_250_000,
+          recorded: true,
         },
       }),
     ]);
@@ -1164,7 +1216,7 @@ describe("academy route", () => {
     });
     await user.click(
       within(dialog).getByRole("button", {
-        name: "Restore to still at club",
+        name: "Clear record",
       }),
     );
 

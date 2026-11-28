@@ -17,7 +17,6 @@ use super::service::{
 pub struct AcademyClassDto {
     pub id: i64,
     pub class_year: i64,
-    pub is_automatic: bool,
     pub member_count: i64,
 }
 
@@ -26,7 +25,6 @@ impl From<AcademyClass> for AcademyClassDto {
         Self {
             id: academy_class.id,
             class_year: academy_class.class_year,
-            is_automatic: academy_class.is_automatic,
             member_count: academy_class.member_count,
         }
     }
@@ -74,7 +72,6 @@ pub struct AcademyMemberDto {
     pub reported_career_appearances: Option<i64>,
     pub goals: Option<i64>,
     pub assists: Option<i64>,
-    pub international_caps: Option<i64>,
     pub outcome: Option<AcademyMemberOutcomeDto>,
     pub is_graduate: Option<bool>,
     pub loaned_out: bool,
@@ -86,6 +83,7 @@ pub struct AcademyMemberOutcomeDto {
     pub status: String,
     pub buying_club: Option<String>,
     pub sale_fee_eur: Option<i64>,
+    pub recorded: bool,
 }
 
 impl From<AcademyMemberOutcome> for AcademyMemberOutcomeDto {
@@ -94,6 +92,7 @@ impl From<AcademyMemberOutcome> for AcademyMemberOutcomeDto {
             status: outcome.status.as_str().to_string(),
             buying_club: outcome.buying_club,
             sale_fee_eur: outcome.sale_fee_eur,
+            recorded: outcome.recorded,
         }
     }
 }
@@ -136,7 +135,6 @@ impl From<AcademyMember> for AcademyMemberDto {
             reported_career_appearances: member.reported_career_appearances,
             goals: member.goals,
             assists: member.assists,
-            international_caps: member.international_caps,
             outcome: member.outcome.map(AcademyMemberOutcomeDto::from),
             is_graduate: member.is_graduate,
             loaned_out: member.loaned_out,
@@ -149,7 +147,6 @@ impl From<AcademyMember> for AcademyMemberDto {
 pub struct AcademyClassDetailDto {
     pub id: i64,
     pub class_year: i64,
-    pub is_automatic: bool,
     pub members: Vec<AcademyMemberDto>,
 }
 
@@ -158,7 +155,6 @@ impl From<AcademyClassDetail> for AcademyClassDetailDto {
         Self {
             id: detail.id,
             class_year: detail.class_year,
-            is_automatic: detail.is_automatic,
             members: detail
                 .members
                 .into_iter()
@@ -326,18 +322,23 @@ mod tests {
             .expect("configure managed club");
         }
 
+        let created = {
+            let conn = db.0.lock().expect("lock writer");
+            let save_id = snapshot_service::active_save_id(&conn).expect("active save");
+            service::create_class(&conn, save_id, 2026).expect("create class")
+        };
+
         let classes =
             crate::db::read_while_writer_is_held(&db, read_classes).expect("classes on a reader");
-        let baseline = classes
-            .iter()
-            .find(|class| class.class_year == 2025)
-            .expect("baseline class")
-            .id;
+        assert_eq!(
+            classes.iter().map(|class| class.id).collect::<Vec<_>>(),
+            [created.id]
+        );
         let (class, candidates) = crate::db::read_while_writer_is_held(&db, move |db| {
-            (read_class(db, baseline), read_candidates(db, "golden"))
+            (read_class(db, created.id), read_candidates(db, "golden"))
         });
 
-        assert!(class.expect("class on a reader").is_automatic);
+        assert_eq!(class.expect("class on a reader").class_year, 2026);
         let candidates = candidates.expect("candidates on a reader");
         assert_eq!(
             candidates

@@ -2,7 +2,6 @@ import {
   BadgeCheck,
   BadgeEuro,
   CircleMinus,
-  Globe2,
   Goal,
   GraduationCap,
   Handshake,
@@ -44,15 +43,19 @@ export function AcademyStatistics({
       : status === "error"
         ? "Could not load the Academy details."
         : null;
+  // A class with members shows no career figure until the linked FM save has been read.
+  const needsSeasonStats = (value: number | null) =>
+    status === "ready" && value === null && trackedPlayers > 0
+      ? "Needs season stats from your linked FM save."
+      : undefined;
   const outcomeMetrics: Metric[] = [
     {
       id: "graduates",
       label: "Graduates",
       value: formatNullableCount(statistics.graduates),
       tooltip:
-        status === "ready" && statistics.graduates === null
-          ? "Career appearances have not been imported for every tracked player."
-          : "At least one career appearance.",
+        needsSeasonStats(statistics.graduates) ??
+        "At least one competitive appearance.",
       icon: GraduationCap,
     },
     {
@@ -82,31 +85,15 @@ export function AcademyStatistics({
       id: "goals",
       label: "Goals",
       value: formatNullableCount(statistics.goals),
-      tooltip:
-        status === "ready" && statistics.goals === null
-          ? "Career goals have not been imported for every tracked player."
-          : undefined,
+      tooltip: needsSeasonStats(statistics.goals),
       icon: Goal,
     },
     {
       id: "assists",
       label: "Assists",
       value: formatNullableCount(statistics.assists),
-      tooltip:
-        status === "ready" && statistics.assists === null
-          ? "Career assists have not been imported for every tracked player."
-          : undefined,
+      tooltip: needsSeasonStats(statistics.assists),
       icon: Handshake,
-    },
-    {
-      id: "international-caps",
-      label: "International caps",
-      value: formatNullableCount(statistics.internationalCaps),
-      tooltip:
-        status === "ready" && statistics.internationalCaps === null
-          ? "International caps have not been imported for every tracked player."
-          : undefined,
-      icon: Globe2,
     },
   ];
   const contextMetrics: Metric[] = [
@@ -143,7 +130,7 @@ export function AcademyStatistics({
         </p>
       ) : null}
       <section aria-label="Academy outcomes" aria-busy={status === "loading"}>
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
           {outcomeMetrics.map((metric) => (
             <AcademyOutcomeMetric key={metric.id} metric={metric} />
           ))}

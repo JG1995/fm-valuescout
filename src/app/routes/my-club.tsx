@@ -31,7 +31,6 @@ import type {
   ClubDnaRemoveResult,
   ClubDnaUpsertResult,
 } from "@/features/club-dna/types/club-dna";
-import { SquadCsvImportActions } from "@/features/csv-import/components/squad-csv-import-actions";
 import { dashboardProspectsQueryOptions } from "@/features/dashboard/api/dashboard-query-options";
 import { YouthXiAction } from "@/features/dashboard/components/youth-xi-action";
 import type { DashboardContext } from "@/features/dashboard/types/dashboard";
@@ -705,82 +704,64 @@ function MyClubPageContent() {
                 feedback={squadBoostFeedback}
                 feedbackRef={squadBoostFeedbackRef}
                 actions={
-                  <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-4 border-0 p-0">
+                  <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-2 border-0 p-0">
                     <legend className="sr-only">Squad actions</legend>
-                    <SquadCsvImportActions
-                      activeSaveId={snapshot.saveId}
-                      snapshotId={snapshot.id}
-                      onYouthImported={() => {
-                        void queryClient.invalidateQueries({
-                          queryKey: academyKeys.all,
-                        });
+                    <SquadCurrentAbilityBoost
+                      key={`current-ability-${snapshot.id}`}
+                      pending={
+                        squadCurrentAbilityBoostContextIsCurrent &&
+                        squadCurrentAbilityBoost.isPending
+                      }
+                      disabled={squadBoostPending || squadBoostRecoveryRequired}
+                      error={
+                        squadCurrentAbilityBoostContextIsCurrent
+                          ? (squadCurrentAbilityBoost.error ?? null)
+                          : null
+                      }
+                      onBoost={(onProgress) =>
+                        squadCurrentAbilityBoost.mutateAsync({
+                          snapshotId: snapshot.id,
+                          onProgress,
+                        })
+                      }
+                      onOpenConfirmation={() => {
+                        squadCurrentAbilityBoost.reset();
+                        setLatestSquadBoostAction("currentAbility");
                       }}
+                      onConfirmationChange={(open) =>
+                        setOpenSquadBoostAction(open ? "currentAbility" : null)
+                      }
+                      fallbackFocusTo={() => squadBoostFeedbackRef.current}
                     />
-                    <fieldset className="m-0 flex min-w-0 flex-wrap justify-end gap-2 border-0 p-0">
-                      <legend className="sr-only">Squad development</legend>
-                      <SquadCurrentAbilityBoost
-                        key={`current-ability-${snapshot.id}`}
-                        pending={
-                          squadCurrentAbilityBoostContextIsCurrent &&
-                          squadCurrentAbilityBoost.isPending
-                        }
-                        disabled={
-                          squadBoostPending || squadBoostRecoveryRequired
-                        }
-                        error={
-                          squadCurrentAbilityBoostContextIsCurrent
-                            ? (squadCurrentAbilityBoost.error ?? null)
-                            : null
-                        }
-                        onBoost={(onProgress) =>
-                          squadCurrentAbilityBoost.mutateAsync({
-                            snapshotId: snapshot.id,
-                            onProgress,
-                          })
-                        }
-                        onOpenConfirmation={() => {
-                          squadCurrentAbilityBoost.reset();
-                          setLatestSquadBoostAction("currentAbility");
-                        }}
-                        onConfirmationChange={(open) =>
-                          setOpenSquadBoostAction(
-                            open ? "currentAbility" : null,
-                          )
-                        }
-                        fallbackFocusTo={() => squadBoostFeedbackRef.current}
-                      />
-                      <SquadWonderkidMentalityBoost
-                        key={`wonderkid-mentality-${snapshot.id}`}
-                        pending={
-                          squadWonderkidMentalityBoostContextIsCurrent &&
-                          squadWonderkidMentalityBoost.isPending
-                        }
-                        disabled={
-                          squadBoostPending || squadBoostRecoveryRequired
-                        }
-                        error={
-                          squadWonderkidMentalityBoostContextIsCurrent
-                            ? (squadWonderkidMentalityBoost.error ?? null)
-                            : null
-                        }
-                        onBoost={(onProgress) =>
-                          squadWonderkidMentalityBoost.mutateAsync({
-                            snapshotId: snapshot.id,
-                            onProgress,
-                          })
-                        }
-                        onOpenConfirmation={() => {
-                          squadWonderkidMentalityBoost.reset();
-                          setLatestSquadBoostAction("wonderkidMentality");
-                        }}
-                        onConfirmationChange={(open) =>
-                          setOpenSquadBoostAction(
-                            open ? "wonderkidMentality" : null,
-                          )
-                        }
-                        fallbackFocusTo={() => squadBoostFeedbackRef.current}
-                      />
-                    </fieldset>
+                    <SquadWonderkidMentalityBoost
+                      key={`wonderkid-mentality-${snapshot.id}`}
+                      pending={
+                        squadWonderkidMentalityBoostContextIsCurrent &&
+                        squadWonderkidMentalityBoost.isPending
+                      }
+                      disabled={squadBoostPending || squadBoostRecoveryRequired}
+                      error={
+                        squadWonderkidMentalityBoostContextIsCurrent
+                          ? (squadWonderkidMentalityBoost.error ?? null)
+                          : null
+                      }
+                      onBoost={(onProgress) =>
+                        squadWonderkidMentalityBoost.mutateAsync({
+                          snapshotId: snapshot.id,
+                          onProgress,
+                        })
+                      }
+                      onOpenConfirmation={() => {
+                        squadWonderkidMentalityBoost.reset();
+                        setLatestSquadBoostAction("wonderkidMentality");
+                      }}
+                      onConfirmationChange={(open) =>
+                        setOpenSquadBoostAction(
+                          open ? "wonderkidMentality" : null,
+                        )
+                      }
+                      fallbackFocusTo={() => squadBoostFeedbackRef.current}
+                    />
                   </fieldset>
                 }
                 sortBy={squadSort}

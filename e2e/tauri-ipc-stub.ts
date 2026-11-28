@@ -4,7 +4,6 @@ import { VISIBLE_ATTRIBUTE_KEYS } from "../src/utils/player-attributes";
 export type SmokeStubOptions = {
   academyWorkspace?: boolean;
   academyLargeCohort?: boolean;
-  csvImportFormat?: "youthTracker";
   plannerSnapshot?: boolean;
   plannerPotentialScores?: boolean;
   playerTableRowCount?: number;
@@ -24,7 +23,6 @@ export type SmokeStubOptions = {
 
 export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const academyWorkspace = options.academyWorkspace ?? false;
-  const csvImportFormat = options.csvImportFormat ?? null;
   const plannerSnapshot = options.plannerSnapshot ?? false;
   const plannerPotentialScores = options.plannerPotentialScores ?? false;
   const playerTableRowCount = options.playerTableRowCount ?? null;
@@ -51,7 +49,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       let playerProfileHiddenInformationRevealed =
         window.localStorage.getItem("player-profile-hidden-information") !==
         "false";
-      const csvImportFormat = ${JSON.stringify(csvImportFormat)};
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
       const plannerPotentialScores = ${plannerPotentialScores ? "true" : "false"};
       const playerTableRowCount = ${JSON.stringify(playerTableRowCount)};
@@ -113,7 +110,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         },
       ] : [];
       const academyClasses = academyWorkspace
-        ? [{ id: 7, classYear: 2026, isAutomatic: false, memberCount: 2 }]
+        ? [{ id: 7, classYear: 2026, memberCount: 2 }]
         : [];
       const academyMembers = academyWorkspace
         ? [
@@ -135,7 +132,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               reportedCareerAppearances: 8,
               goals: 3,
               assists: 2,
-              internationalCaps: 1,
               outcome: null,
               isGraduate: true,
             },
@@ -157,7 +153,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               reportedCareerAppearances: 0,
               goals: 0,
               assists: 0,
-              internationalCaps: 0,
               outcome: null,
               isGraduate: false,
             },
@@ -174,14 +169,17 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             playerUid: index + 100,
             lastKnownName: name,
             currentName: unresolved ? null : name,
-            state: unresolved ? "unresolved" : index === 0 ? "departed" : "resolved",
+            state: unresolved ? "unresolved" : "resolved",
             currentClub: unresolved ? null : index === 0
               ? "Club Deportivo Internacional de Desarrollo Juvenil Barcelona"
               : "Barcelona U19",
             reportedCareerAppearances: unresolved ? null : 0,
             goals: unresolved ? null : 0,
             assists: unresolved ? null : 0,
-            internationalCaps: unresolved ? null : 0,
+            // The snapshot no longer holds him, so it shows him as released.
+            outcome: unresolved
+              ? { status: "released", buyingClub: null, saleFeeEur: null, recorded: false }
+              : null,
             isGraduate: unresolved ? null : false,
           };
         }));
@@ -1091,7 +1089,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
           if (cmd === "plugin:dialog|open") {
-            return csvImportFormat ? "/tmp/smoke-import.csv" : null;
+            return null;
           }
 
           if (cmd === "get_graphics_status") {
@@ -1373,15 +1371,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   currentClub: "Barcelona U19",
                 }]
               : [];
-          }
-
-          if (cmd === "import_csv") {
-            return {
-              format: csvImportFormat,
-              totalPlayers: 3,
-              storedPlayers: 3,
-              skippedPlayers: 0,
-            };
           }
 
           if (cmd === "search_players") {
